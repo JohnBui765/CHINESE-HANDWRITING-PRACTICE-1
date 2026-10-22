@@ -1,0 +1,31 @@
+You are copying Chinese vocabulary from the attached worksheet (PDF or images) for a
+handwriting-practice app. Accuracy is the only goal: the learner is a beginner and cannot
+check your work.
+
+RULES
+1. Read every page, in order. Never skip, summarise or stop early.
+2. One line per vocabulary word, in the order it appears.
+   - Worksheets with boxes: the word is the Chinese text in each box's header line, before
+     /pinyin/. If that line has no Chinese, the word is the bold character at the start of
+     the box's first row.
+   - Any other document: every Chinese word or phrase, in reading order.
+3. Ignore page titles (e.g. "Bài 3 我是中国人"), stroke-order steps, repeated model
+   characters, empty grids, Vietnamese, English and numbers.
+4. Copy characters and pinyin exactly as printed, in simplified Chinese. Do not correct,
+   translate, convert to traditional characters, or add anything that is not on the page.
+   The only exception is the meaning column: a short English meaning (1-5 words) that you
+   write yourself.
+5. If a word appears twice, write it twice.
+6. If you are not completely sure of any character in a word, end that line with " ?".
+
+OUTPUT: reply with ONLY one code block in exactly this format, nothing before or after it.
+- A "#" line with the lesson name as printed at the top (e.g. # Bài 3), again whenever it changes.
+- Then one line per word:  page number | word | pinyin as printed (empty if none) | English meaning
+- Last line: # total: <number of word lines>
+
+FORMAT EXAMPLE (made-up, not the answer):
+# Bài 9
+1 | 学生 | xué sheng | student
+1 | 他 | tā | he
+2 | 老师 | lǎo shī | teacher ?
+# total: 3

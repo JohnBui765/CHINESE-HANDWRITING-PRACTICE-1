@@ -1,0 +1,15 @@
+{
+  "name": "chinese-handwriting-practice-1",
+  "private": true,
+  "type": "module",
+  "description": "Offline Chinese handwriting practice sheets (PWA). Dev tools only; the app itself needs no install.",
+  "scripts": {
+    "test": "node --test tests/*.test.js tests/browser/*.test.js",
+    "test:unit": "node --test tests/*.test.js",
+    "test:browser": "node --test --test-concurrency=1 tests/browser/*.test.js",
+    "serve": "node tests/browser/server.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

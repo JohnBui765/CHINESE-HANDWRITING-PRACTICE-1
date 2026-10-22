@@ -1,0 +1,17 @@
+Runtime libraries copied into this folder (never loaded from a CDN)
+====================================================================
+
+pdf-lib.esm.min.js      @cantoo/pdf-lib 2.11.1   (MIT, LICENSE-pdf-lib.md)
+                        from node_modules/@cantoo/pdf-lib/dist/pdf-lib.esm.min.js
+fontkit.esm.min.js      @cantoo/fontkit 2.0.12   (MIT, LICENSE-fontkit.txt)
+                        made ONCE with esbuild 0.28.2 (its browser file imports other packages
+                        by name, which a browser cannot resolve):
+                        npx esbuild@0.28.2 node_modules/@cantoo/fontkit/dist/browser-module.mjs --bundle --format=esm --minify --outfile=vendor/fontkit.esm.min.js
+jszip.min.js            jszip 3.10.2             (MIT or GPL-3.0; used under MIT, LICENSE-jszip.md)
+                        from node_modules/jszip/dist/jszip.min.js
+pdfjs/pdf.min.js        pdfjs-dist 6.4.299, legacy build (Apache-2.0, pdfjs/LICENSE.txt)
+pdfjs/pdf.worker.min.js from node_modules/pdfjs-dist/legacy/build/pdf.min.mjs and
+pdfjs/cmaps/            pdf.worker.min.mjs, renamed to .js; cmaps/ copied unchanged
+
+To update a library: npm install the new version in a scratch folder, copy the files as above,
+update this list, run the tests (npm test), then python tools/make_precache.py.

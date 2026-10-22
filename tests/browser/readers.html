@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>readers.js test page</title>
+</head>
+<body>
+  <p>Test page for js/readers.js and js/extract.js (used by tests/browser/readers.test.js).</p>
+  <script type="module">
+    import * as readers from '../../js/readers.js';
+    import * as extract from '../../js/extract.js';
+    window.readers = readers;
+    window.extract = extract;
+    window.testReady = true;
+  </script>
+</body>
+</html>

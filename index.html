@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hanzi Grid</title>
+  <meta name="description" content="Make Chinese handwriting practice sheets (田字格) as PDF, offline.">
+  <meta name="theme-color" content="#8c2a1c">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Hanzi Grid <span lang="zh">田字格</span></h1>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-words" aria-controls="panel-words" aria-selected="true">1 · Get words</button>
+      <button type="button" role="tab" id="tab-sheet" aria-controls="panel-sheet" aria-selected="false">2 · Make sheet</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Tab 1: get the list and check it -->
+    <section id="panel-words" role="tabpanel" aria-labelledby="tab-words">
+      <div class="card">
+        <h2>Add words</h2>
+        <label for="paste">Paste an AI reply, a lesson list or any text</label>
+        <textarea id="paste" rows="6" placeholder="# Bài 5&#10;女朋友 | nǚ péngyou | girlfriend&#10;哪"></textarea>
+        <details id="second">
+          <summary>Compare with a second AI's reply</summary>
+          <label for="paste2">Paste the second AI's reply here</label>
+          <textarea id="paste2" rows="5"></textarea>
+        </details>
+        <div class="buttons">
+          <button type="button" id="read-paste" class="primary">Read text</button>
+          <button type="button" id="open-file">Open file…</button>
+          <button type="button" id="copy-prompt">Copy AI prompt</button>
+        </div>
+        <input id="file-input" type="file" hidden
+          accept=".txt,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*">
+        <div id="prompt-box" class="prompt-box" hidden>
+          <p>Copying did not work. Select the prompt and copy it by hand:</p>
+          <textarea id="prompt-text" rows="8" readonly></textarea>
+          <button type="button" id="select-prompt">Select all</button>
+        </div>
+        <p id="message" class="message" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="card">
+        <div class="list-head">
+          <label for="list-name">List name</label>
+          <input id="list-name" type="text" autocomplete="off">
+        </div>
+        <div id="notices"></div>
+        <ol id="list" class="word-list"></ol>
+        <p id="empty" class="hint">No words yet. Paste text or open a file above.</p>
+        <form id="add-form" class="add-form">
+          <label for="add-word" class="visually-hidden">Add a word</label>
+          <input id="add-word" type="text" lang="zh" placeholder="Add a word, e.g. 朋友" autocomplete="off">
+          <button type="submit">Add</button>
+        </form>
+        <div class="buttons">
+          <button type="button" id="save-list">Save list</button>
+          <button type="button" id="clear-list" class="quiet">Clear list</button>
+          <button type="button" id="to-sheet" class="primary">Next: make sheet →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: make the PDF -->
+    <section id="panel-sheet" role="tabpanel" aria-labelledby="tab-sheet" hidden>
+      <div class="card">
+        <h2>Make sheet</h2>
+        <p id="sheet-summary"></p>
+        <fieldset>
+          <legend>Box size</legend>
+          <label class="choice"><input type="radio" name="box-size" value="small">
+            <span><b>Small boxes</b> — 10 mm, 18 columns, no pinyin</span></label>
+          <label class="choice"><input type="radio" name="box-size" value="large">
+            <span><b>Large boxes</b> — 15 mm, 12 columns, with pinyin and meaning</span></label>
+        </fieldset>
+        <div class="setting">
+          <label for="default-rows">Empty rows for new words</label>
+          <input id="default-rows" type="number" min="0" max="24" inputmode="numeric">
+          <button type="button" id="rows-all" class="quiet">Use for all words</button>
+        </div>
+        <div class="buttons">
+          <button type="button" id="make-pdf" class="primary">Make PDF</button>
+          <button type="button" id="save-pdf" class="primary" hidden>Save PDF</button>
+        </div>
+        <p id="progress" class="message" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    Works offline. Row 1 of each word is KaiTi 楷体 (handwriting), row 2 is print 黑体 (screen).
+  </footer>
+</body>
+</html>

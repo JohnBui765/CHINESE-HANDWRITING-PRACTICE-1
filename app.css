@@ -1,0 +1,187 @@
+/* Hanzi Grid styles. One column on a phone, a wider card on a PC. */
+
+/* The two fonts the sheet uses, so the previews look exactly like the PDF. */
+@font-face {
+  font-family: 'HG Kai';
+  src: url('fonts/ukai-cn.ttf') format('truetype');
+  font-display: block;
+}
+@font-face {
+  font-family: 'HG Print';
+  src: url('fonts/noto-sans-sc.ttf') format('truetype');
+  font-display: block;
+}
+
+:root {
+  --bg: #f6f3ee;
+  --card: #ffffff;
+  --text: #1f1d1a;
+  --muted: #6b665e;
+  --line: #ddd6cb;
+  --accent: #8c2a1c;
+  --accent-text: #ffffff;
+  --warn-bg: #fff1dc;
+  --warn: #9a5a00;
+  --error-bg: #fde4e1;
+  --error: #b3261e;
+  --ok: #2e6b30;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #181614;
+    --card: #23201d;
+    --text: #eee9e1;
+    --muted: #a59e94;
+    --line: #3a352f;
+    --accent: #d4664f;
+    --accent-text: #1a0d0a;
+    --warn-bg: #3a2a10;
+    --warn: #f0b45a;
+    --error-bg: #3d1714;
+    --error: #ff8a80;
+    --ok: #8fd18f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  padding: 12px 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.top h1 { font-size: 1.25rem; margin: 0 0 8px; }
+.top h1 span { font-family: 'HG Kai', serif; font-weight: normal; color: var(--accent); }
+
+.tabs { display: flex; gap: 4px; }
+.tabs button {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px 8px;
+  font: inherit;
+  font-weight: 600;
+}
+.tabs button[aria-selected="true"] { background: var(--card); color: var(--text); }
+
+main { max-width: 820px; margin: 0 auto; padding: 16px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+
+label { display: block; font-weight: 600; margin-bottom: 4px; }
+
+textarea, input[type="text"], input[type="number"] {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+input[type="number"] { width: 5.5em; }
+
+details { margin: 10px 0; }
+summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+button {
+  font: inherit;
+  min-height: 44px;              /* big touch targets */
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.quiet { background: transparent; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+.message { min-height: 1.4em; margin: 10px 0 0; }
+.message.ok { color: var(--ok); }
+.message.problem { color: var(--error); }
+
+.prompt-box { margin-top: 12px; }
+
+.hint { color: var(--muted); }
+
+.list-head { margin-bottom: 8px; }
+
+.notice { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+
+.word-list { list-style: none; margin: 0; padding: 0; }
+/* Phone: everything stacked. PC (wider than 640 px): previews on the left. */
+.word {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.word .preview { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.word .kai { font-family: 'HG Kai', serif; font-size: 48px; line-height: 1.1; }
+.word .print { font-family: 'HG Print', sans-serif; font-size: 34px; line-height: 1.1; color: var(--muted); }
+.word .info { color: var(--muted); }
+.word .info b { color: var(--text); font-weight: 600; }
+
+.flags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.flags li { border-radius: 6px; padding: 2px 8px; font-size: 0.9rem; }
+.flags .warn { background: var(--warn-bg); color: var(--warn); }
+.flags .error { background: var(--error-bg); color: var(--error); font-weight: 600; }
+
+.rows { display: flex; align-items: center; gap: 6px; }
+.rows span { color: var(--muted); font-size: 0.9rem; }
+.rows button { min-width: 44px; padding: 6px 8px; }
+.rows button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.rows input { width: 4em; padding: 6px; min-height: 44px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions button { padding: 6px 10px; }
+
+.edit-form { grid-column: 1 / -1; display: grid; gap: 8px; }
+.edit-form .buttons { margin-top: 0; }
+
+.add-form { display: flex; gap: 8px; margin-top: 12px; }
+.add-form input { flex: 1; }
+
+fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 12px 0; padding: 8px 12px; }
+legend { font-weight: 600; padding: 0 4px; }
+.choice { display: flex; gap: 10px; align-items: center; font-weight: normal; min-height: 44px; }
+.choice input { width: 22px; height: 22px; }
+
+.setting { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.setting label { margin: 0; }
+
+.foot { color: var(--muted); font-size: 0.85rem; text-align: center; padding: 8px 16px 24px; }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (min-width: 640px) {
+  .word { grid-template-columns: 10em 1fr; column-gap: 16px; }
+  .word .preview { grid-row: span 4; flex-direction: column; gap: 4px; }
+}

@@ -10,7 +10,7 @@
 
 const PREFIX = 'chinese-handwriting-practice-1-';
 // PRECACHE-START (written by tools/make_precache.py; do not edit by hand)
-const VERSION = '115b9aba5d';
+const VERSION = '8695ba9663';
 const PRECACHE = [
   "./",
   "index.html",
@@ -25,6 +25,7 @@ const PRECACHE = [
   "js/draw.js",
   "js/extract.js",
   "js/layout.js",
+  "js/practice.js",
   "js/readers.js",
   "js/sheet-worker.js",
   "js/store.js",

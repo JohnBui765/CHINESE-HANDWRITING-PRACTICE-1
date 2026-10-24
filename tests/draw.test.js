@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { layoutSheet } from '../js/layout.js';
 import { drawSheet } from '../js/draw.js';
+import { layoutPractice } from '../js/practice.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'tests', 'output');
@@ -83,5 +84,24 @@ test('subsetting changes no character: same pixels as the fonts embedded whole',
     const result = check(a.file, '--compare', b.file);
     assert.ok(result.same_page_count);
     assert.deepEqual(result.differing_pixels_per_page, result.differing_pixels_per_page.map(() => 0), size);
+  }
+});
+
+test('builds a practice PDF in every box size with both fonts embedded', { skip: !HAVE_PYMUPDF && 'PyMuPDF not available' }, async () => {
+  const items = [...WORDS, { word: '哥哥', pinyin: 'gēge', meaning: 'older brother', rows: 3 }];
+  for (const box of [14, 12, 10]) {
+    const layout = layoutPractice(items, { box, rounds: 3, seed: 4, name: 'Bài 3–4' });
+    const bytes = await drawSheet(layout, fonts, 'Bài 3–4');
+    const file = path.join(OUT, `practice-${box}.pdf`);
+    fs.writeFileSync(file, bytes);
+    const info = check(file, '--json');
+    assert.equal(info.pages, layout.pages.length);
+    const names = info.fonts.map(f => f.name);
+    assert.ok(names.some(n => n.includes('UKaiCN')) && names.some(n => n.includes('NotoSansSC')), names.join(','));
+    assert.ok(info.fonts.every(f => f.embedded && f.bytes < 100_000));
+    const text = info.text.join('\n');
+    for (const heading of ['PART 1: MODEL LIST', 'PART 2: SIDE B ONLY', 'PART 3: MIXED PRACTICE (15)', 'Round 3', 'nǚ péngyou', '- girlfriend']) {
+      assert.ok(text.includes(heading), `${box} mm: ${heading}`);
+    }
   }
 });

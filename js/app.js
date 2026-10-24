@@ -4,6 +4,7 @@
 import { readText, compareReplies, countSyllables, toLessonText, safeFileName } from './extract.js';
 import { readFile } from './readers.js';
 import { layoutSheet, emptyRows, SIZES } from './layout.js';
+import { layoutPractice, maxPracticeChars } from './practice.js';
 import { loadSettings, saveSettings, loadCurrent, saveCurrent, saveFile } from './store.js';
 
 // ---------------------------------------------------------------------------------------
@@ -15,6 +16,7 @@ const settings = loadSettings();
 let list = loadCurrent() || { name: '', entries: [], notices: [] };
 let editing = -1;        // index of the word being edited, or -1
 let pdfBlob = null;      // the last PDF built
+let pdfKind = 'grid';    // its sheet type, for the file name
 let worker = null;
 
 // Loaded at start-up (and cached by the service worker for offline use).
@@ -73,9 +75,19 @@ function checkEntry(entry) {
   if (missing.length && fontChars.size) {
     errors.push(`Not in the app's fonts: ${missing.join(' ')} (a traditional or rare character?)`);
   }
-  const columns = SIZES[settings.boxSize].columns;
-  if (chars.length > columns) {
-    errors.push(`Too long: ${chars.length} characters, the sheet has ${columns} columns`);
+  if (settings.sheetType === 'practice') {
+    // Missing pinyin or meaning never blocks printing; the spot is just left empty.
+    if (!entry.pinyin) warnings.push('No pinyin: left empty on the practice sheet');
+    if (!entry.meaning) warnings.push('No meaning: left empty on the practice sheet');
+    const max = maxPracticeChars(settings.practiceBox);
+    if (chars.length > max) {
+      errors.push(`Too long: ${chars.length} characters, a practice row with ${settings.practiceBox} mm boxes holds ${max}`);
+    }
+  } else {
+    const columns = SIZES[settings.boxSize].columns;
+    if (chars.length > columns) {
+      errors.push(`Too long: ${chars.length} characters, the sheet has ${columns} columns`);
+    }
   }
   return { warnings, errors };
 }
@@ -132,7 +144,8 @@ function wordRow(entry, index) {
     (warnings.length || errors.length) ? el('ul', { class: 'flags' },
       ...errors.map(text => el('li', { class: 'error' }, text)),
       ...warnings.map(text => el('li', { class: 'warn' }, text))) : el('div'),
-    rowsControl(entry, index),
+    // Rows per word only matter on the grid sheet.
+    settings.sheetType === 'grid' ? rowsControl(entry, index) : null,
   );
   if (editing === index) {
     item.append(editForm(entry, index));
@@ -159,11 +172,23 @@ function render() {
 }
 
 function renderSheetTab() {
+  const practice = settings.sheetType === 'practice';
+  for (const radio of document.querySelectorAll('input[name="sheet-type"]')) {
+    radio.checked = radio.value === settings.sheetType;
+  }
   for (const radio of document.querySelectorAll('input[name="box-size"]')) {
     radio.checked = radio.value === settings.boxSize;
   }
+  for (const radio of document.querySelectorAll('input[name="practice-box"]')) {
+    radio.checked = Number(radio.value) === settings.practiceBox;
+  }
+  $('grid-options').hidden = practice;
+  $('practice-options').hidden = !practice;
   $('default-rows').value = settings.defaultRows;
   $('default-rows').max = SIZES[settings.boxSize].maxRows;
+  $('rounds').value = settings.rounds;
+  renderMissing();
+
   const summary = $('sheet-summary');
   const errors = errorCount();
   if (!list.entries.length) {
@@ -171,10 +196,31 @@ function renderSheetTab() {
   } else if (errors) {
     summary.textContent = `${errors} word(s) have a red error. Fix them on tab 1 before making the PDF.`;
   } else {
-    const pages = layoutSheet(sheetItems(), settings.boxSize).pages.length;
+    const pages = practice
+      ? layoutPractice(sheetItems(), practiceOptions(1)).pages.length
+      : layoutSheet(sheetItems(), settings.boxSize).pages.length;
     summary.textContent = `“${list.name || 'Untitled'}”: ${list.entries.length} word(s) on ${pages} page(s).`;
   }
   $('make-pdf').disabled = !list.entries.length || errors > 0;
+}
+
+// Practice sheet: say which words have no pinyin or no meaning (they still print).
+function renderMissing() {
+  const box = $('missing');
+  box.replaceChildren();
+  if (settings.sheetType !== 'practice') return;
+  const noPinyin = list.entries.filter(entry => !entry.pinyin).map(entry => entry.word);
+  const noMeaning = list.entries.filter(entry => !entry.meaning).map(entry => entry.word);
+  if (noPinyin.length) box.append(el('p', { class: 'notice' }, `No pinyin (${noPinyin.length}): ${noPinyin.join(', ')}`));
+  if (noMeaning.length) box.append(el('p', { class: 'notice' }, `No meaning (${noMeaning.length}): ${noMeaning.join(', ')}`));
+  if (noPinyin.length || noMeaning.length) {
+    box.append(el('p', { class: 'hint' }, 'These words still print; the missing parts are left empty. Add them with Edit on tab 1.'));
+  }
+}
+
+// seed: a number that decides the random order of the mixed rounds.
+function practiceOptions(seed) {
+  return { box: settings.practiceBox, rounds: settings.rounds, seed, name: list.name || '' };
 }
 
 function sheetItems() {
@@ -417,12 +463,20 @@ function makePdf() {
   $('make-pdf').disabled = true;
   $('progress').className = 'message';
   $('progress').textContent = 'Starting…';
-  startWorker().postMessage({ items: sheetItems(), boxSize: settings.boxSize, title: list.name || 'Untitled' });
+  pdfKind = settings.sheetType;
+  startWorker().postMessage({
+    items: sheetItems(),
+    sheetType: settings.sheetType,
+    boxSize: settings.boxSize,
+    // A new random order of the mixed rounds every time the PDF is made.
+    practice: practiceOptions(Math.floor(Math.random() * 2 ** 32)),
+    title: list.name || 'Untitled',
+  });
 }
 
 function savePdf() {
   if (!pdfBlob) return;
-  const name = `${safeFileName(list.name || 'Untitled')}_grid.pdf`;
+  const name = `${safeFileName(list.name || 'Untitled')}_${pdfKind === 'practice' ? 'practice' : 'grid'}.pdf`;
   saveFile(pdfBlob, name).catch(error => {
     $('progress').textContent = `Could not save: ${error.message}`;
     $('progress').className = 'message problem';
@@ -534,6 +588,27 @@ function wireUp() {
   for (const radio of document.querySelectorAll('input[name="box-size"]')) {
     radio.addEventListener('change', () => setBoxSize(radio.value));
   }
+  for (const radio of document.querySelectorAll('input[name="sheet-type"]')) {
+    radio.addEventListener('change', () => {
+      settings.sheetType = radio.value;
+      saveSettings(settings);
+      listChanged();
+    });
+  }
+  for (const radio of document.querySelectorAll('input[name="practice-box"]')) {
+    radio.addEventListener('change', () => {
+      settings.practiceBox = Number(radio.value);
+      saveSettings(settings);
+      listChanged();
+    });
+  }
+  $('rounds').addEventListener('change', () => {
+    let n = Math.floor(Number($('rounds').value));
+    if (!Number.isFinite(n)) n = 3;
+    settings.rounds = Math.min(5, Math.max(1, n));
+    saveSettings(settings);
+    listChanged();
+  });
   $('default-rows').addEventListener('change', setDefaultRows);
   $('rows-all').addEventListener('click', () => {
     setDefaultRows();

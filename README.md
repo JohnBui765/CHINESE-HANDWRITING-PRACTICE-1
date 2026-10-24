@@ -76,6 +76,20 @@ Choose one way to bring in words:
 
 The sheets are made for black-and-white printing on A4.
 
+### The practice sheet
+
+On tab 2, choose **Sheet type → Practice sheet** to get a test sheet instead of a copy grid:
+
+- **Part 1 · Model list**: every word with its pinyin and meaning (also your answer key).
+- **Part 2 · Side B only**: pinyin and meaning with empty boxes; write the characters.
+- **Part 3 · Mixed practice**: the words again in a new random order, in rounds. Sometimes the word
+  is shown (write its pinyin and meaning on the line), sometimes the pinyin (write the word).
+  Each word is asked both ways.
+
+Choose the **box size** (14 mm like the original, or 12 / 10 mm to save paper) and the number of
+**rounds** (1–5). Every time you press **Make PDF** the mixed part comes out in a new order.
+Words without pinyin or meaning still print; tab 2 lists them so you can add them with **Edit**.
+
 ---
 
 ## 3. Updates

@@ -194,6 +194,43 @@ test('makes PDFs in both box sizes, named after the list, with both fonts embedd
   await context.close();
 });
 
+test('practice sheet: missing pinyin is listed but still prints, in 14, 12 and 10 mm boxes', async () => {
+  const { context, page, problems } = await openApp();
+  await pasteAndRead(page, '# Bài 3\n女朋友 | nǚ péngyou | girlfriend\n哪 | nǎ\n国\n工作 | gōngzuò | work');
+  await page.click('#tab-sheet');
+  await page.check('input[name="sheet-type"][value="practice"]');
+  assert.equal(await page.isHidden('#grid-options'), true);
+  const missing = await page.textContent('#missing');
+  assert.match(missing, /No pinyin \(1\): 国/);
+  assert.match(missing, /No meaning \(2\): 哪, 国/);
+  assert.equal(await page.isDisabled('#make-pdf'), false, 'missing pinyin does not block printing');
+  // The rows control is hidden on tab 1 in practice mode.
+  await page.click('#tab-words');
+  assert.equal(await page.locator('#list .rows').count(), 0);
+  assert.ok((await flagsOf(page, 2)).some(f => f.startsWith('warn') && f.includes('No pinyin')));
+  await page.click('#tab-sheet');
+  for (const box of ['14', '12', '10']) {
+    await page.check(`input[name="practice-box"][value="${box}"]`);
+    await page.click('#make-pdf');
+    await page.waitForSelector('#save-pdf:not([hidden])', { timeout: 60_000 });
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#save-pdf')]);
+    assert.equal(download.suggestedFilename(), 'Bài 3_practice.pdf');
+    const file = path.join(OUT, `app-practice-${box}.pdf`);
+    await download.saveAs(file);
+    if (HAVE_PYMUPDF) {
+      const text = checkPdf(file).text.join('\n');
+      assert.match(text, /PART 3: MIXED PRACTICE \(12\)/);
+      assert.match(text, /女|朋/);
+    }
+  }
+  // Back to the grid sheet: the rows control returns.
+  await page.check('input[name="sheet-type"][value="grid"]');
+  await page.click('#tab-words');
+  assert.equal(await page.locator('#list .rows').count(), 4);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('the page keeps responding while a 300-word PDF is built', async () => {
   const { context, page } = await openApp();
   // 300 different two-character words from the common list.

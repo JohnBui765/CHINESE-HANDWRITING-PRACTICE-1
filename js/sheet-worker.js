@@ -1,10 +1,12 @@
 // The worker that builds the PDF, so the page never freezes.
-// The page sends:   { items, boxSize, title }
+// The page sends:   { items, sheetType, boxSize, practice, title }
+//   sheetType "grid" uses layout.js; "practice" uses practice.js with practice = { box, rounds, seed, name }
 // The worker sends: { type: 'progress', text }, then { type: 'done', pdf, pages }
 //                   or { type: 'error', message }
 // This is the browser version of the worker / queue / poll pattern in reference/img2word.py.
 
 import { layoutSheet } from './layout.js';
+import { layoutPractice } from './practice.js';
 import { drawSheet } from './draw.js';
 
 let fontBytes = null;   // loaded once, then reused for every PDF
@@ -27,11 +29,11 @@ async function loadFonts() {
 }
 
 self.onmessage = async event => {
-  const { items, boxSize, title } = event.data;
+  const { items, sheetType, boxSize, practice, title } = event.data;
   try {
     self.postMessage({ type: 'progress', text: 'Loading the fonts…' });
     const fonts = await loadFonts();
-    const layout = layoutSheet(items, boxSize);
+    const layout = sheetType === 'practice' ? layoutPractice(items, practice) : layoutSheet(items, boxSize);
     self.postMessage({ type: 'progress', text: `Drawing ${layout.pages.length} page(s)…` });
     const pdf = await drawSheet(layout, fonts, title);
     // The second argument hands the bytes over instead of copying them.

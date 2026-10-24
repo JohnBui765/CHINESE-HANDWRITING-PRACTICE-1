@@ -63,8 +63,9 @@ export async function drawSheet(layout, fontBytes, title = 'Hanzi Grid', options
     // 3. the solid grid
     for (const l of p.grid) line(page, l, style.grid);
 
-    // 4. block lines (small boxes) and cut lines (large boxes)
-    for (const m of p.marks) line(page, m, m.kind === 'cut' ? style.cut : style.block);
+    // 4. block lines (small boxes), cut lines (large boxes), answer lines (practice sheet);
+    //    each kind has its own style in layout.style
+    for (const m of p.marks) line(page, m, style[m.kind]);
 
     // 5. header, page numbers and labels; shrink a text that is wider than its space
     for (const t of p.texts) {

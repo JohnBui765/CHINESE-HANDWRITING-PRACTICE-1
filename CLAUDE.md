@@ -296,8 +296,11 @@ loses nothing, but saved lists are files, because browser storage can be wiped.
 
 ## Part 2: Make the sheet
 
-**Box size** setting: **Small boxes** (10 mm, the default) or **Large boxes** (15 mm). Both are
-described below. Common rules:
+**Sheet type** setting: **Grid sheet** (the default, described first) or **Practice sheet**
+(see "Practice sheet" below).
+
+**Box size** setting of the grid sheet: **Small boxes** (10 mm, the default) or **Large boxes**
+(15 mm). Both are described below. Common rules:
 
 - A4 portrait. The PDF is drawn in points from the bottom-left corner, like reportlab:
   `mm = 72 / 25.4`.
@@ -382,9 +385,49 @@ Measured from the sample (y = distance from the page top):
 - **Changed from the sample:** the sample draws each word as one string, so 朋 and 友 drift left
   of their cell centres. The app centres every character in its own cell.
 
+### Practice sheet: the layout of the owner's `HSK1_Bai3-4_practice_kai.pdf`
+
+Three parts; each part starts on a new page. One row per word: number, the word's boxes (one
+14 mm box per character, outline and dashed cross `#000d33`, 0.8 pt / 0.4 pt dash 2–2), then
+"side B": pinyin and `- meaning`.
+
+- **Part 1: Model list (Side A: Side B)**: the word in KaiTi in the boxes, pinyin, meaning. It is
+  also the answer key.
+- **Part 2: Side B only** ("Write the character in the boxes."): empty boxes, pinyin, meaning.
+- **Part 3: Mixed practice (rounds × words)** ("Character shown: write the pinyin and meaning on
+  the line. Pinyin shown: write the character in the boxes."): **Round 1, 2, 3…**, each with every
+  word once, in a new random order. Each item shows either the word (and a blank answer line
+  `#000888` 0.5 pt from the pinyin column to x = 195 mm) or side B (and empty boxes).
+  - Round 1 shows the word for a random half; round 2 swaps every word; round 3 is random again,
+    round 4 swaps it… so every word is practised both ways.
+  - A round never starts with the word that ended the round before.
+  - A new random order every time Make PDF is pressed (`seed`); the same seed gives the same sheet
+    (tests).
+- **Rounds:** setting 1–5, default 3.
+- **Box size:** 14 mm (the sample), 12 mm or 10 mm, to save paper. Characters are 0.8 × box.
+- **Measured from the sample (14 mm; y = mm from the page top):** part title 14 pt at x 15,
+  baseline 24; subtitle 9 pt baseline 30; first box 6.5 mm below the last title/heading baseline
+  (30.5 / 36.5 / 47.5); continuation pages start at 19.5; rows every box + 3 mm (17); a box may
+  end at 271.5. "Round N" 14 pt: 11 mm below the subtitle, or 7.5 mm below the box above it, with
+  room for at least one row under it. In a row (scaled by box / 14 for smaller boxes): number
+  10 pt right-aligned at x 23, baseline top + 8.5; pinyin 13 pt and meaning 10.5 pt (not below
+  10 / 8 pt) on baseline top + 8; answer line at top + 12.
+- **Side B column:** pinyin at x = 25 + max(3, k) × box + 6 mm (73 mm for 14 mm boxes); meaning
+  30 mm (scaled) further right; both shrink to fit. A word longer than
+  `floor((125 − 31) / box)` characters (6 / 7 / 9) is a red error in practice mode.
+- **Missing pinyin or meaning never blocks printing** (owner's decision): tab 2 lists the words
+  without pinyin and without meaning, each such word gets an orange warning, and the missing part
+  is left empty on the sheet. A word with neither always shows the word in Part 3.
+- The list name is printed small and grey at the right end of each part's title line.
+- **Changed from the sample:** characters are centred in their own boxes (the sample drew each
+  word as one string); long words push side B to the right instead of overlapping it.
+- The rows-per-word control is hidden in practice mode (it only matters on the grid sheet).
+- File name: `<list name>_practice.pdf`.
+
 ### Saving the PDF
 
-- **File name:** `<list name>_grid.pdf`, with characters Windows forbids in file names replaced.
+- **File name:** `<list name>_grid.pdf` (grid) or `<list name>_practice.pdf` (practice), with
+  characters Windows forbids in file names replaced.
   The browser (Windows) or the Files app (iPhone) deals with name clashes.
 - The PDF title is the list name (`pdfDoc.setTitle`).
 - **Make PDF** builds the file in the worker and shows progress. Then a **Save PDF** button
@@ -396,7 +439,8 @@ Measured from the sample (y = distance from the page top):
 
 ## Settings
 
-localStorage `chinese-handwriting-practice-1.settings`: default empty rows (3), box size (small).
+localStorage `chinese-handwriting-practice-1.settings`: default empty rows (3), box size (small),
+sheet type (grid), practice box size (14), rounds (3).
 
 ## Files and folders
 
@@ -407,6 +451,8 @@ localStorage `chinese-handwriting-practice-1.settings`: default empty rows (3), 
 - `js/readers.js`: file readers (`.txt`, `.docx` with JSZip, `.pdf` with pdf.js).
 - `js/layout.js`: the layout pass for both box sizes: where every block, line, label and
   character goes. No browser APIs, no PDF library, so Node can test it.
+- `js/practice.js`: the layout of the practice sheet (parts, rounds, random order). No browser
+  APIs, so Node can test it.
 - `js/draw.js`: turns a layout into PDF bytes with pdf-lib. Runs in the worker and in Node.
 - `js/sheet-worker.js`: the worker: loads the fonts, calls `layout.js` and `draw.js`, posts
   progress and the finished PDF.
@@ -489,6 +535,11 @@ layoutSheet(items, boxSize) // items = [{ word, pinyin, meaning, rows }] where r
                             // lists, in drawing order: crosses, chars (cell centres), grid,
                             // marks (block / cut lines), texts (header, page number, labels).
 
+// js/practice.js: no browser APIs
+layoutPractice(items, { box, rounds, seed, name }) // -> the same shape as layoutSheet; marks of
+                            // kind "answer" are the answer lines
+practiceRounds(items, rounds, seed) // -> for each round: [{ index, show: "word" | "sideB" }]
+
 // js/draw.js: runs in the worker and in Node
 drawSheet(layout, fontBytes, title) // fontBytes = { kai, print } (ArrayBuffer) -> Uint8Array (the PDF)
 // js/store.js: settings and the current list in localStorage ("chinese-handwriting-practice-1." keys), saveFile()
@@ -558,10 +609,14 @@ Test each of these and report the results in the assessment:
      the old `chinese-handwriting-practice-1-` cache is gone.
    - The manifest `id` resolves to `/CHINESE-HANDWRITING-PRACTICE-1/` on the test server.
    - Nothing is fetched from any other origin.
-8. On the owner's iPhone (manual checklist in the README): add to Home Screen, open in flight
+8. Practice sheet: the 30 sample words give the sample's 13 pages with the same rows per page
+   (14 / 15 / 1 / 14 / 15 / 1 / 13 / 15 / 14 / 15 / 14 / 15 / 4); positions match the sample; every
+   round has every word once, half each way, round 2 swapped; 12 mm and 10 mm need fewer pages;
+   missing pinyin/meaning is listed but prints; the PDF embeds both fonts.
+9. On the owner's iPhone (manual checklist in the README): add to Home Screen, open in flight
    mode, Copy AI prompt, paste a reply, make a sheet in both sizes, Save PDF → Save to Files and
    Print.
-9. The README steps work: install on Windows and iPhone, and publish on GitHub Pages.
+10. The README steps work: install on Windows and iPhone, and publish on GitHub Pages.
 
 ## Out of scope for v1
 

@@ -75,16 +75,43 @@
         <h2>Make sheet</h2>
         <p id="sheet-summary"></p>
         <fieldset>
-          <legend>Box size</legend>
-          <label class="choice"><input type="radio" name="box-size" value="small">
-            <span><b>Small boxes</b> — 10 mm, 18 columns, no pinyin</span></label>
-          <label class="choice"><input type="radio" name="box-size" value="large">
-            <span><b>Large boxes</b> — 15 mm, 12 columns, with pinyin and meaning</span></label>
+          <legend>Sheet type</legend>
+          <label class="choice"><input type="radio" name="sheet-type" value="grid">
+            <span><b>Grid sheet</b> — each word, then empty rows to copy it</span></label>
+          <label class="choice"><input type="radio" name="sheet-type" value="practice">
+            <span><b>Practice sheet</b> — model list, side B only, mixed rounds</span></label>
         </fieldset>
-        <div class="setting">
-          <label for="default-rows">Empty rows for new words</label>
-          <input id="default-rows" type="number" min="0" max="24" inputmode="numeric">
-          <button type="button" id="rows-all" class="quiet">Use for all words</button>
+
+        <div id="grid-options">
+          <fieldset>
+            <legend>Box size</legend>
+            <label class="choice"><input type="radio" name="box-size" value="small">
+              <span><b>Small boxes</b> — 10 mm, 18 columns, no pinyin</span></label>
+            <label class="choice"><input type="radio" name="box-size" value="large">
+              <span><b>Large boxes</b> — 15 mm, 12 columns, with pinyin and meaning</span></label>
+          </fieldset>
+          <div class="setting">
+            <label for="default-rows">Empty rows for new words</label>
+            <input id="default-rows" type="number" min="0" max="24" inputmode="numeric">
+            <button type="button" id="rows-all" class="quiet">Use for all words</button>
+          </div>
+        </div>
+
+        <div id="practice-options" hidden>
+          <fieldset>
+            <legend>Box size</legend>
+            <label class="choice"><input type="radio" name="practice-box" value="14">
+              <span><b>14 mm</b> — like the sample</span></label>
+            <label class="choice"><input type="radio" name="practice-box" value="12">
+              <span><b>12 mm</b> — smaller, saves paper</span></label>
+            <label class="choice"><input type="radio" name="practice-box" value="10">
+              <span><b>10 mm</b> — smallest, saves the most paper</span></label>
+          </fieldset>
+          <div class="setting">
+            <label for="rounds">Mixed rounds (1–5)</label>
+            <input id="rounds" type="number" min="1" max="5" inputmode="numeric">
+          </div>
+          <div id="missing"></div>
         </div>
         <div class="buttons">
           <button type="button" id="make-pdf" class="primary">Make PDF</button>

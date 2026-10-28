@@ -6,6 +6,7 @@ import { readFile } from './readers.js';
 import { layoutSheet, emptyRows, SIZES } from './layout.js';
 import { layoutPractice, maxPracticeChars } from './practice.js';
 import { loadSettings, saveSettings, loadCurrent, saveCurrent, saveFile } from './store.js';
+import { splitEntries, allInList, fillIn, pinyinPrompt, isPinyinPromptExample } from './listedit.js';
 
 // ---------------------------------------------------------------------------------------
 // State
@@ -22,7 +23,8 @@ let worker = null;
 // Loaded at start-up (and cached by the service worker for offline use).
 let common = new Set();      // the 3,500 common characters
 let fontChars = new Set();   // characters that both fonts have
-let promptText = '';         // the AI prompt
+let promptText = '';         // the AI prompt for worksheets
+let pinyinPromptText = '';   // the AI prompt for pinyin and meanings
 
 const $ = id => document.getElementById(id);
 
@@ -51,6 +53,13 @@ function showMessage(text, kind = '') {
   box.className = 'message ' + kind;
 }
 
+// The same, for the buttons under the list.
+function listMessage(text, kind = '') {
+  const box = $('list-message');
+  box.textContent = text;
+  box.className = 'message ' + kind;
+}
+
 // ---------------------------------------------------------------------------------------
 // Warnings (orange) and errors (red) for one word
 // ---------------------------------------------------------------------------------------
@@ -63,6 +72,12 @@ function checkEntry(entry) {
   if (entry.compare === 'differs') warnings.push(`The second AI read “${entry.other}”`);
   if (entry.compare === 'onlyA') warnings.push('Only the first AI found this word');
   if (entry.compare === 'onlyB') warnings.push('Only the second AI found this word');
+  // A character made by Split: its pinyin came from the word it was in.
+  if (entry.splitFrom && entry.pinyin) {
+    warnings.push(`Pinyin taken from ${entry.splitFrom}: check it on its own (tones can change inside a word)`);
+  } else if (entry.splitFrom) {
+    warnings.push(`The pinyin of ${entry.splitFrom} could not be split: add it with Edit or “Copy AI prompt: pinyin & meaning”`);
+  }
   if (entry.pinyin) {
     const syllables = countSyllables(entry.pinyin);
     if (syllables !== chars.length) {
@@ -156,6 +171,9 @@ function wordRow(entry, index) {
       el('button', { type: 'button', 'data-action': 'up', 'data-index': index, disabled: index === 0, 'aria-label': 'Move up' }, '↑'),
       el('button', { type: 'button', 'data-action': 'down', 'data-index': index, disabled: index === last, 'aria-label': 'Move down' }, '↓'),
       el('button', { type: 'button', 'data-action': 'merge', 'data-index': index, disabled: index === last, 'aria-label': 'Merge with next word' }, 'Merge ↓'),
+      [...entry.word].length > 1
+        ? el('button', { type: 'button', 'data-action': 'split', 'data-index': index, 'aria-label': 'Split into single characters' }, 'Split')
+        : null,
       el('button', { type: 'button', 'data-action': 'delete', 'data-index': index }, 'Delete'),
     ));
   }
@@ -262,6 +280,26 @@ function useResult(result, second = null) {
     showMessage('No Chinese words found in this text.', 'problem');
     return;
   }
+  // A reply to "Copy AI prompt: pinyin & meaning": every pasted line with pinyin or a meaning
+  // is a word already in the list, so it fills in what is missing instead of replacing the list.
+  if (!second && isPinyinPromptExample(entries, list.entries)) {
+    showMessage('This reply only repeats the example from the prompt. Paste the AI\u2019s real answer.', 'problem');
+    return;
+  }
+  if (!second && allInList(list.entries, entries)) {
+    const filled = fillIn(list.entries, entries);
+    if (!filled.updated) {
+      showMessage('Nothing to fill in: these words are already in your list with their pinyin and meaning. ' +
+        '(To read this text as a new list instead, press “Clear list” first.)', 'ok');
+      return;
+    }
+    list.entries = filled.entries;
+    list.notices = list.notices.filter(notice => !notice.startsWith('Split '));
+    editing = -1;
+    showMessage(`Filled in the pinyin and meaning of ${filled.updated} word(s) in your list. (To start a new list instead, press “Clear list” first.)`, 'ok');
+    listChanged();
+    return;
+  }
   if (list.entries.length && !window.confirm(`Replace the current list (${list.entries.length} words)?`)) return;
   if (result.removed) notices.push(`${result.removed} repeated word(s) were removed.`);
   if (result.total !== null && result.total !== undefined && result.total !== result.lines) {
@@ -303,23 +341,45 @@ async function openFile(file) {
   }
 }
 
-function copyPrompt() {
+// Copies text to the clipboard. Called directly inside the tap, with the text already
+// loaded (iPhone needs both). If copying is not allowed, the text is shown in a box instead.
+function copyText(text, onCopied) {
   const fallback = () => {
-    $('prompt-text').value = promptText;
+    $('prompt-text').value = text;
     $('prompt-box').hidden = false;
+    $('prompt-box').scrollIntoView({ block: 'nearest' });
   };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(onCopied, fallback);
+  } else {
+    fallback();
+  }
+}
+
+function copyPrompt() {
   if (!promptText) {
     showMessage('The prompt is not loaded yet. Try again in a moment.', 'problem');
     return;
   }
-  // Called directly inside the tap, with the text already loaded (iPhone needs both).
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(promptText).then(
-      () => showMessage('AI prompt copied. Paste it into ChatGPT, Gemini or Claude with your worksheet.', 'ok'),
-      fallback);
-  } else {
-    fallback();
+  copyText(promptText,
+    () => showMessage('AI prompt copied. Paste it into ChatGPT, Gemini or Claude with your worksheet.', 'ok'));
+}
+
+// The prompt that asks an AI for the pinyin and meaning of the words that need them
+// (split characters, words without pinyin or meaning), with those words added at the end.
+function copyPinyinPrompt() {
+  if (!pinyinPromptText) {
+    listMessage('The prompt is not loaded yet. Try again in a moment.', 'problem');
+    return;
   }
+  const text = pinyinPrompt(pinyinPromptText, list.entries);
+  if (!text) {
+    listMessage('Every word already has its own pinyin and meaning.', 'ok');
+    return;
+  }
+  copyText(text, () => listMessage(
+    'Prompt copied, with the words that need pinyin or a meaning. Paste it into an AI chat, then paste ' +
+    'the AI\u2019s reply into the box at the top and press \u201cRead text\u201d: it fills in your list.', 'ok'));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -362,7 +422,15 @@ function onListClick(event) {
         pinyin: [first.pinyin, next.pinyin].filter(Boolean).join(' '),
         meaning: [first.meaning, next.meaning].filter(Boolean).join('; '),
         unsure: first.unsure || next.unsure,
+        splitFrom: '',
       });
+      editing = -1;
+      break;
+    }
+    case 'split': {
+      const result = splitEntries(entries, index);
+      list.entries = result.entries;
+      addSplitNotice(result);
       editing = -1;
       break;
     }
@@ -381,6 +449,31 @@ function onListChange(event) {
   if (!Number.isFinite(n) || n < 0) n = 0;
   list.entries[index].rows = n >= max ? 'Page' : n;
   listChanged();
+}
+
+// "Split all": every word with two or more characters becomes single characters.
+function splitAll() {
+  const count = list.entries.filter(entry => [...entry.word].length > 1).length;
+  if (!count) {
+    listMessage('There is nothing to split: every word has one character.', 'problem');
+    return;
+  }
+  if (!window.confirm(`Split all ${count} word(s) into single characters? The pinyin comes from ` +
+    'each word and the meanings are left empty. (Save the list first if you want to keep the words.)')) return;
+  const result = splitEntries(list.entries);
+  list.entries = result.entries;
+  addSplitNotice(result);
+  editing = -1;
+  listMessage('');
+  listChanged();
+}
+
+function addSplitNotice({ split, removed }) {
+  const text = `Split ${split} word(s) into characters` +
+    (removed ? `; ${removed} repeated character(s) removed.` : '.') +
+    ' The pinyin comes from the words and the meanings are empty: use \u201cCopy AI prompt: pinyin & meaning\u201d' +
+    ' to get each character\u2019s own.';
+  list.notices = [...list.notices.filter(notice => !notice.startsWith('Split ')), text];
 }
 
 // Only Chinese characters are kept in a word, as everywhere else.
@@ -404,6 +497,7 @@ function onEditSubmit(event) {
     pinyin: form.elements.pinyin.value.trim(),
     meaning: form.elements.meaning.value.trim(),
     unsure: false,
+    splitFrom: '',   // the owner has checked the pinyin
   });
   editing = -1;
   listChanged();
@@ -417,7 +511,7 @@ function addWord(event) {
     return;
   }
   list.entries.push({
-    word, pinyin: '', meaning: '', page: null, unsure: false, compare: null, other: '',
+    word, pinyin: '', meaning: '', page: null, unsure: false, compare: null, other: '', splitFrom: '',
     rows: settings.defaultRows,
   });
   $('add-word').value = '';
@@ -545,14 +639,16 @@ function lines(text) {
 }
 
 async function loadData() {
-  const [commonText, fontText, prompt] = await Promise.all([
+  const [commonText, fontText, prompt, pinyinPromptFile] = await Promise.all([
     loadText('data/common3500.txt'),
     loadText('data/font-chars.txt'),
     loadText('prompts/worksheet.txt'),
+    loadText('prompts/pinyin-meaning.txt'),
   ]);
   common = new Set(lines(commonText));
   fontChars = new Set(lines(fontText));
   promptText = prompt;
+  pinyinPromptText = pinyinPromptFile;
 }
 
 function wireUp() {
@@ -580,6 +676,8 @@ function wireUp() {
   $('list').addEventListener('submit', onEditSubmit);
   $('add-form').addEventListener('submit', addWord);
   $('save-list').addEventListener('click', saveList);
+  $('split-all').addEventListener('click', splitAll);
+  $('copy-pinyin-prompt').addEventListener('click', copyPinyinPrompt);
   $('clear-list').addEventListener('click', () => {
     if (list.entries.length && !window.confirm('Remove all words from the list?')) return;
     list = { name: '', entries: [], notices: [] };

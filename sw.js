@@ -10,7 +10,7 @@
 
 const PREFIX = 'chinese-handwriting-practice-1-';
 // PRECACHE-START (written by tools/make_precache.py; do not edit by hand)
-const VERSION = '8695ba9663';
+const VERSION = '84a641d0fd';
 const PRECACHE = [
   "./",
   "index.html",
@@ -20,11 +20,12 @@ const PRECACHE = [
   "fonts/noto-sans-sc.ttf",
   "data/common3500.txt",
   "data/font-chars.txt",
-  "prompts/worksheet.txt",
   "js/app.js",
   "js/draw.js",
   "js/extract.js",
   "js/layout.js",
+  "js/listedit.js",
+  "js/pinyin.js",
   "js/practice.js",
   "js/readers.js",
   "js/sheet-worker.js",
@@ -33,6 +34,8 @@ const PRECACHE = [
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",
+  "prompts/pinyin-meaning.txt",
+  "prompts/worksheet.txt",
   "vendor/fontkit.esm.min.js",
   "vendor/jszip.min.js",
   "vendor/pdf-lib.esm.min.js",

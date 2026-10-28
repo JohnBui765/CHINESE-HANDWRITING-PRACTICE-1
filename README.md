@@ -62,6 +62,15 @@ Choose one way to bring in words:
   word in the box under the list.
 - **Rows**: how many empty rows each word gets: **1**, **3**, **6**, **Page** (a whole page) or any
   number.
+- **Split** (on a word with two or more characters) turns it into single characters, to drill
+  each one. **Split all into characters** (under the list) does it for every word. Repeated
+  characters are removed (the first one stays, with the best pinyin and meaning of all its
+  copies). Each character gets its syllable from the word's pinyin, with an
+  orange note: tones can change inside a word (友 is *yǒu* on its own, but *you* in 朋友), and
+  the meaning is left empty. To fix both, press **Copy AI prompt: pinyin & meaning**, paste it
+  into an AI chat, then paste the AI's reply into the box at the top and press **Read text**:
+  it fills in your list instead of replacing it. It only fills what is missing (and the
+  syllables taken from a word); pinyin and meanings you typed yourself are kept.
 - **Save list** saves the list as a `.txt` file (on iPhone: Save to Files). Open it again later
   with **Open file…**. The app also remembers the current list by itself, but files are safer.
 

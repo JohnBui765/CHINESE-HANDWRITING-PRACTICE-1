@@ -25,9 +25,8 @@ FILES = [
     "fonts/noto-sans-sc.ttf",
     "data/common3500.txt",
     "data/font-chars.txt",
-    "prompts/worksheet.txt",
 ]
-FOLDERS = ["js", "icons", "vendor"]
+FOLDERS = ["js", "icons", "prompts", "vendor"]
 SKIP_NAMES = re.compile(r"^(LICENSE|VERSIONS|README)", re.IGNORECASE)
 
 

@@ -231,6 +231,55 @@ test('practice sheet: missing pinyin is listed but still prints, in 14, 12 and 1
   await context.close();
 });
 
+test('Split, Split all, and the pinyin prompt whose reply fills in the list', async () => {
+  const { context, page, problems } = await openApp({ permissions: ['clipboard-read', 'clipboard-write'] });
+  let questions = 0;
+  page.on('dialog', dialog => { questions++; dialog.accept(); });
+  await page.waitForTimeout(300);
+  await pasteAndRead(page, '# Bài 3\n女朋友 | nǚ péngyou | girlfriend\n姐姐 | jiějie | older sister\n国 | guó | country\n中国 | Zhōngguó | China');
+
+  // Split one word: its characters take its place, with the pinyin of the word.
+  await page.click('#list .word:nth-child(1) button[data-action="split"]');
+  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐姐', '国', '中国']);
+  assert.match(await page.textContent('#list .word:nth-child(3) .info'), /you/);
+  assert.ok((await flagsOf(page, 2)).some(f => f.startsWith('warn') && f.includes('Pinyin taken from 女朋友')));
+  // A single character has no Split button.
+  assert.equal(await page.locator('#list .word:nth-child(1) button[data-action="split"]').count(), 0);
+
+  // Split all: one question, repeats removed, 国 keeps its own pinyin and meaning.
+  await page.click('#split-all');
+  assert.equal(questions, 1);
+  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐', '国', '中']);
+  assert.match(await page.textContent('#notices'), /Split 2 word\(s\) into characters; 2 repeated character\(s\) removed/);
+  assert.ok(!(await flagsOf(page, 4)).some(f => f.includes('Pinyin taken')));
+  await page.click('#split-all');
+  assert.match(await page.textContent('#list-message'), /nothing to split/);
+
+  // The prompt lists only the characters that need pinyin or a meaning.
+  await page.click('#copy-pinyin-prompt');
+  await page.waitForSelector('#list-message.ok');
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  assert.ok(copied.includes('THE LIST:\n女\n朋\n友\n姐\n中\n'), copied.slice(-40));
+
+  // The AI's reply fills in the list: same order, rows kept, warnings gone, no question asked.
+  await pasteAndRead(page, '```\n女 | nǚ | woman\n朋 | péng | friend\n友 | yǒu | friend\n姐 | jiě | older sister\n中 | zhōng | middle\n```');
+  assert.equal(questions, 1);
+  assert.match(await page.textContent('#message'), /Filled in the pinyin and meaning of 5 word/);
+  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐', '国', '中']);
+  assert.match(await page.textContent('#list .word:nth-child(3) .info'), /yǒu friend/);
+  for (let i = 0; i < 6; i++) assert.ok(!(await flagsOf(page, i)).some(f => f.includes('Pinyin taken')), `word ${i}`);
+  assert.equal(await page.textContent('#notices'), '');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('chinese-handwriting-practice-1.current')).entries);
+  assert.ok(saved.every(entry => entry.rows === 3));
+
+  // A reply that only repeats the prompt's example is not loaded.
+  await pasteAndRead(page, '山 | shān | mountain\n水 | shuǐ | water');
+  assert.match(await page.textContent('#message'), /only repeats the example/);
+  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐', '国', '中']);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('the page keeps responding while a 300-word PDF is built', async () => {
   const { context, page } = await openApp();
   // 300 different two-character words from the common list.

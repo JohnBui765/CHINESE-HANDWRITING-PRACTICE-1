@@ -170,7 +170,8 @@ column, big touch targets) and on a PC.
 - A **word** is one run of consecutive Chinese characters. Pinyin, Vietnamese, English, numbers,
   punctuation and spaces separate words and are discarded (except in the `|` columns described
   under "Lesson format" and "Reply format").
-- Words are **never split into single characters**.
+- Reading text never splits words into single characters. The owner can split them on the
+  check screen (**Split**, **Split all**, see below).
 - Keep the order of first appearance. Remove repeated **words**, and say how many were removed.
   The same character may appear in several different words.
 - **List name:** the first `#` line. If there are several (Bài 3, Bài 4), use "Bài 3–4". With
@@ -268,7 +269,8 @@ There is one row per word. Each row shows:
 - warnings
 - the rows control (see Part 2)
 - buttons: **edit** (word, pinyin, meaning), **move up/down**, **delete**, **merge with next
-  line** (words joined; pinyin joined with a space; meanings joined with "; ")
+  line** (words joined; pinyin joined with a space; meanings joined with "; "), and for words
+  with two or more characters **split** (see "Split and the pinyin prompt")
 
 Below the list, the owner can add a word by typing or pasting it.
 
@@ -278,6 +280,8 @@ Below the list, the owner can add a word by typing or pasting it.
 - The two AI replies disagree, or only one of them has the word.
 - The pinyin syllable count is not the word's character count.
 - A character is not in `data/common3500.txt`. This catches rare misreads.
+- A split character: "Pinyin taken from 女朋友: check it on its own (tones can change inside a
+  word)", or "The pinyin of 你好 could not be split: add it with Edit or …".
 
 **Errors (red: cannot print until fixed):**
 
@@ -288,6 +292,58 @@ Below the list, the owner can add a word by typing or pasting it.
 
 **Shown once at the top:** the `# total:` line doesn't match the number of words; how many
 repeated words were removed.
+
+### Split and the pinyin prompt (to drill single characters)
+
+- **Split** (on a word's row) replaces the word with one row per character, in its place.
+  **Split all into characters** (under the list) does it for every word, after one question.
+- Each character keeps the word's rows, page, `?` flag and comparison flags. Its **meaning is
+  left empty** (a word's meaning is not its characters' meaning, and "part of 女朋友" would give
+  the answer away on the practice sheet). Its **pinyin is the word's syllable for it**
+  (`splitPinyin`, below), and `splitFrom` remembers the word, for the warning above. Edit and
+  Merge clear `splitFrom`.
+- Then repeats of the **new** characters are removed (other repeats in the list are left
+  alone). The first place is kept, and nothing a repeat knows is lost:
+  - pinyin: taken when the first has none, or when the first's came from a word and the
+    repeat's is the character's own (国 from 中国 takes the pinyin of a separate 国 row);
+    `splitFrom` comes with it, so the warning stays while the pinyin is still a word's;
+  - meaning: taken when the first has none;
+  - the `?` flag and the comparison flags ("the AIs disagree") are kept.
+
+  A notice says how many words were split and how many repeats were removed.
+- **`splitPinyin(pinyin, word)`** (`js/pinyin.js`). A wrong split is worse than none, so when
+  in doubt the result is null and the pinyin stays empty.
+  - The valid syllables (413) are built from a table of initials and their finals (`v` = ü).
+  - The pinyin is normalised with NFKC (full-width letters become normal ones), then cut into
+    runs of letters at spaces, apostrophes, hyphens and tone numbers 1–5. `u:` means ü.
+  - Each run is cut into syllables, longest first, so that the total is exactly one per
+    character. A syllable has at most one tone.
+  - A syllable starting with a, o or e may only start a run (orthography puts an apostrophe
+    before it: Xī'ān). A second pass also allows it in the middle when both it and the syllable
+    before it carry a tone ("Xīān", "nǚér"). So "hǎo" is never cut into "hǎ" + "o", and
+    "Zhōngguó" for 中国人 is null, not "zhōng" + "gu" + "ó".
+  - Words ending in 儿: a final untoned "er" after a toned syllable ("nǚer" → nǚ, er); or the
+    word written with one syllable less ("nǎr", "yìdiǎnr", "nar3"): the "r" is taken off (a
+    tone number after it goes to the syllable before) and 儿 gets "ér".
+  - Output is in lower case. More than 200 letters is not pinyin: null. Places where no cut
+    can finish are remembered, so odd input never freezes the page.
+  - Checked against all 9,390 multi-character words of the HSK 3.1 list: none failed; one wrong
+    cut (感恩 "gǎnēn", which lacks its apostrophe in that list: gǎ + nēn). The split warning
+    covers such cases.
+- **Copy AI prompt: pinyin & meaning** (under the list) copies `prompts/pinyin-meaning.txt`
+  plus the words that need help (no pinyin, no meaning, or split), one per line. The prompt asks
+  for each character's own dictionary pinyin (友 = yǒu) and a 1–5 word English meaning, in the
+  lesson format `item | pinyin | meaning`. Its format example uses 山 and 水 (not in the
+  samples); when the list does not contain them, a reply with only those lines "only repeats
+  the example".
+- **Filling in:** with no second reply, when every useful pasted line (a word with pinyin or a
+  meaning, other than the example's 山 and 水) is a word already in the current list, Read text
+  fills in instead of replacing the list. It fills only what is missing: an empty pinyin or
+  meaning, and pinyin taken from a word (then `splitFrom` is cleared). Pinyin and meanings the
+  list already has are never overwritten; order, rows and flags stay. It says how many words
+  got something new, or that there was nothing to fill in (with the hint to press "Clear list"
+  first to read the text as a new list). Otherwise it replaces the list as before.
+- Saved lists (`.txt`) do not keep `splitFrom`.
 
 **Save list** downloads `<name>.txt` in the lesson format, with the pinyin and meaning columns
 when known (on iPhone: through the Share sheet, e.g. Save to Files). **Open list** is the normal
@@ -453,6 +509,8 @@ sheet type (grid), practice box size (14), rounds (3).
   character goes. No browser APIs, no PDF library, so Node can test it.
 - `js/practice.js`: the layout of the practice sheet (parts, rounds, random order). No browser
   APIs, so Node can test it.
+- `js/pinyin.js`: the syllable table and `splitPinyin`. `js/listedit.js`: Split, Split all,
+  removing repeats, filling in from a pasted reply, the pinyin prompt. No browser APIs.
 - `js/draw.js`: turns a layout into PDF bytes with pdf-lib. Runs in the worker and in Node.
 - `js/sheet-worker.js`: the worker: loads the fonts, calls `layout.js` and `draw.js`, posts
   progress and the finished PDF.
@@ -461,7 +519,8 @@ sheet type (grid), practice box size (14), rounds (3).
 - `vendor/`: runtime libraries, their licences, `VERSIONS.txt`.
 - `fonts/`: `ukai-cn.ttf`, `noto-sans-sc.ttf`, `LICENSE-ukai.txt`, `OFL-notosanssc.txt`,
   `README.txt` (the modification notice); `fonts/source/`: the full original fonts.
-- `prompts/worksheet.txt`: the AI prompt.
+- `prompts/worksheet.txt`: the AI prompt for worksheets. `prompts/pinyin-meaning.txt`: the
+  AI prompt for pinyin and meanings.
 - `data/common3500.txt`: 通用规范汉字表 (2013), level 1, exactly 3,500 characters, one per line.
   `data/common8105.txt`: all three levels, exactly 8,105 (3,500 + 3,000 + 1,605), used to make
   the font subsets.
@@ -521,6 +580,7 @@ Entry = {
   unsure,   // true when the AI ended the line with " ?"
   compare,  // null, or after compareReplies: "same" | "differs" | "onlyA" | "onlyB"
   other,    // for "differs": the second reply's word; otherwise ""
+  splitFrom, // set by Split: the word this character came from (its pinyin came from there)
 }
 
 // js/readers.js: browser only
@@ -539,6 +599,15 @@ layoutSheet(items, boxSize) // items = [{ word, pinyin, meaning, rows }] where r
 layoutPractice(items, { box, rounds, seed, name }) // -> the same shape as layoutSheet; marks of
                             // kind "answer" are the answer lines
 practiceRounds(items, rounds, seed) // -> for each round: [{ index, show: "word" | "sideB" }]
+
+// js/pinyin.js and js/listedit.js: no browser APIs
+splitPinyin(pinyin, word)          // -> one syllable per character, or null
+splitEntries(entries, index|null)  // -> { entries, split, removed } (null = Split all)
+removeRepeats(entries, only|null)  // -> { entries, removed } (only = a Set: dedupe just these words)
+allInList(entries, incoming)       // -> true when the paste fills in instead of replacing
+fillIn(entries, incoming)          // -> { entries, updated }
+pinyinPrompt(promptText, entries)  // -> the prompt + the words that need help, or ''
+isPinyinPromptExample(incoming, entries) // -> true when the reply only repeats the example
 
 // js/draw.js: runs in the worker and in Node
 drawSheet(layout, fontBytes, title) // fontBytes = { kai, print } (ArrayBuffer) -> Uint8Array (the PDF)
@@ -613,16 +682,24 @@ Test each of these and report the results in the assessment:
    (14 / 15 / 1 / 14 / 15 / 1 / 13 / 15 / 14 / 15 / 14 / 15 / 4); positions match the sample; every
    round has every word once, half each way, round 2 swapped; 12 mm and 10 mm need fewer pages;
    missing pinyin/meaning is listed but prints; the PDF embeds both fonts.
-9. On the owner's iPhone (manual checklist in the README): add to Home Screen, open in flight
+9. Split: one word and Split all give the characters in place, repeats of the new characters
+   removed (keeping the better pinyin and meaning and the AI's warnings), pinyin from the word
+   with the warning; 儿 words, apostrophes, tone numbers, `u:` and joined pinyin split
+   correctly; pinyin that does not fit (a missing syllable included) stays empty, never
+   shifted; odd input never freezes the page; the pinyin prompt lists only the words that need
+   help; its reply fills in the list without replacing it and without overwriting what the list
+   already has.
+10. On the owner's iPhone (manual checklist in the README): add to Home Screen, open in flight
    mode, Copy AI prompt, paste a reply, make a sheet in both sizes, Save PDF → Save to Files and
    Print.
-10. The README steps work: install on Windows and iPhone, and publish on GitHub Pages.
+11. The README steps work: install on Windows and iPhone, and publish on GitHub Pages.
 
 ## Out of scope for v1
 
 - OCR inside the app and calling any AI or online API
 - pinyin or meanings on the small-box sheet
-- making pinyin automatically (it comes from the AI reply or is typed)
+- making pinyin automatically from characters (it comes from the AI replies, is typed, or is the
+  word's syllable when splitting)
 - a character bank and a "New only" filter
 - stroke-order animation
 - faint trace copies in the empty boxes

@@ -1,20 +1,56 @@
-You are helping a beginner learn Chinese with a handwriting-practice app. For EACH item in the
-list at the end (a single character or a word), give its pinyin and a short English meaning.
+You are helping a beginner learn Chinese with a handwriting-practice app. For EACH line of
+the list at the end, give its pinyin and a short English meaning. Accuracy is the only goal:
+the learner cannot check your work. A flagged guess (" ?") is better than a silent mistake.
 
-RULES
-1. For a single character, give the pinyin it has ON ITS OWN, as in a dictionary, with its
-   full tone (for example 友 is yǒu, not the neutral "you" it has inside 朋友).
-2. If a character has several readings, give the most common one for a beginner (HSK 1-3).
-3. Use tone marks (ā á ǎ à), never tone numbers.
-4. The meaning is short: 1-5 English words.
-5. Keep every item exactly as listed, in the same order, one line each. Do not add, remove,
-   merge, change or convert any character.
+THE LIST
+1. A line with a character, word or sentence is an item on its own.
+2. A line that starts with "> " is a character (or a chunk) of the item above it.
 
-OUTPUT: reply with ONLY one code block in exactly this format, nothing before or after it:
-item | pinyin | meaning
+PINYIN
+3. An item on its own: its dictionary pinyin, with full tones (友 is yǒu, not "you") and the
+   dictionary's neutral tones inside words (朋友 péngyou). If a character has several
+   readings, give the most common one for a beginner (HSK 1-3). A sentence: its pinyin as
+   it is said.
+4. A "> " line: the reading the character has in the item above, with its full dictionary
+   tone (还 in 还是 = hái). If it is said with a different tone there, add " → " and the
+   tone as said (TONE CHANGES below; 你 in 你好: nǐ → ní).
+5. Use tone marks (ā á ǎ à), never tone numbers.
+
+MEANING
+6. 1-5 English words. A "> " line gets the character's own meaning (友: friend); characters
+   that only do grammar get their job in brackets: 们 (plural suffix). A sentence gets an
+   English translation.
+
+TONE CHANGES (inside the item above a "> " line)
+a. 3rd + 3rd (the second not neutral): the first becomes 2nd (你好: 你 nǐ → ní). For three or
+   more 3rd tones, work from the smallest meaning unit outward, using the tones as already
+   changed: 展览馆 = [展览]馆 → zhánlánguǎn; 小老虎 = 小[老虎] → xiǎo láohǔ.
+b. 3rd + neutral tone: usually no change (姐姐 jiějie, 你们 nǐmen); a few words do change
+   (小姐 xiáojie, 哪里 náli). If unsure, keep the 3rd tone and add " ?".
+c. 不 bù → bú before a 4th tone (不是, 不客气).
+d. 一 yī → yí before a 4th tone (一个, 一样); yī → yì before a 1st, 2nd or 3rd tone (一天,
+   一年, 一起). 一 stays yī as a digit or ordinal, in dates and at the end of a word
+   (第一, 一月, 十一).
+e. For 不 and 一, judge by the next character's dictionary tone, even when it is said
+   neutral (一个 yí ge).
+f. 不 and 一 are neutral inside doubled forms (是不是, 看一看) and in verb + 不 +
+   complement (对不起 duìbuqǐ). This overrides c and d.
+g. A character that is neutral in the dictionary form of the item is neutral there
+   (朋友 péngyou: 友 yǒu → you).
+h. 儿 used as an r-ending becomes r (哪儿: 儿 ér → r).
+i. No other tone changes; 七 and 八 never change.
+
+OUTPUT: reply with ONLY one code block in exactly this format, nothing before or after it.
+- Keep every line of the list, in the same order, with its "> " if it has one. Do not add,
+  remove, merge, change or convert any character.
+- An item:     item | pinyin | meaning
+- A "> " line: > character | pinyin (plus " → " and the tone as said, if it changes) | meaning
+- End a line with " ?" if you are not sure of it.
 
 FORMAT EXAMPLE (made-up, not the answer):
 山 | shān | mountain
-水 | shuǐ | water
+水果 | shuǐguǒ | fruit
+> 水 | shuǐ → shuí | water
+> 果 | guǒ | fruit
 
 THE LIST:

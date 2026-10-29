@@ -6,10 +6,13 @@
 //                        the word (write pinyin and meaning on the line) OR the pinyin and
 //                        meaning (write the word in the empty boxes).
 //
+// A word or sentence longer than a row holds gets a wide row: its boxes go across the page (on
+// more lines when needed), with the pinyin and meaning, or two answer lines, under them.
+//
 // Measured from HSK1_Bai3-4_practice_kai.pdf (14 mm boxes). y = mm from the page top.
 // The result has the same shape as layout.js, so draw.js draws both.
 
-import { MM, PAGE_HEIGHT } from './layout.js';
+import { MM, PAGE_HEIGHT, kaiRowFont } from './layout.js';
 
 export const PRACTICE_BOXES = [14, 12, 10];   // box sizes in mm; 14 mm is the sample's
 
@@ -23,6 +26,9 @@ const TEXT_TO_ROW = 6.5;      // title / subtitle / round heading baseline -> ne
 const SUBTITLE_TO_HEADING = 11;
 const ROW_TO_HEADING = 7.5;   // a box bottom -> the round heading below it
 const NUMBER_RIGHT = 23;      // item numbers end here
+const WIDE_LOWEST = 284;      // the text under a wide row may end at most this far down
+const WIDE_TEXT_END = 12;     // a wide row: boxes bottom -> its lowest text or answer line
+const WIDE_NEXT = 17;         // a wide row: boxes bottom -> the next row's top
 
 const BLACK = '#000000';
 const GREY = '#666666';
@@ -44,8 +50,20 @@ function sizes(boxMm) {
 }
 
 // The longest word a practice row can hold: the pinyin must start by x = 125 mm.
+// Longer ones get a wide row.
 export function maxPracticeChars(boxMm) {
   return Math.floor((125 - LEFT - 6) / boxMm);
+}
+
+// How many boxes one line of a wide row holds.
+export function wideLineChars(boxMm) {
+  return Math.floor((RIGHT - LEFT) / boxMm);
+}
+
+// True when a word or sentence does not fit on one page, even in a wide row.
+export function practiceTooLong(word, boxMm) {
+  const lines = Math.ceil([...word].length / wideLineChars(boxMm));
+  return FIRST_ROW + lines * boxMm + WIDE_TEXT_END > WIDE_LOWEST;
 }
 
 // A small random number generator that gives the same numbers for the same seed, so a
@@ -109,11 +127,8 @@ export function layoutPractice(items, options = {}) {
   const z = sizes(box);
   const maxChars = maxPracticeChars(box);
   for (const item of items) {
-    const length = [...item.word].length;
-    if (length === 0) throw new Error('A word is empty.');
-    if (length > maxChars) {
-      throw new Error(`"${item.word}" has ${length} characters; a practice row with ${box} mm boxes holds ${maxChars}.`);
-    }
+    if ([...item.word].length === 0) throw new Error('A word is empty.');
+    if (practiceTooLong(item.word, box)) throw new Error(`"${item.word}" is too long for one page.`);
   }
 
   const y = mm => PAGE_HEIGHT - mm * MM;      // mm from the top -> PDF points from the bottom
@@ -148,13 +163,21 @@ export function layoutPractice(items, options = {}) {
     nextTop = lastText + TEXT_TO_ROW;
   }
 
-  function roundHeading(label) {
+  // True when a row for `item` fits on the page with its top at `top` (a wide row has its text
+  // under the boxes, see wideRow).
+  function fits(top, item) {
+    const k = [...item.word].length;
+    if (k <= maxChars) return top + z.box <= BOTTOM;
+    return top + Math.ceil(k / wideLineChars(box)) * box + WIDE_TEXT_END <= WIDE_LOWEST;
+  }
+
+  // A round heading needs room for itself and the round's first row under it.
+  function roundHeading(label, firstItem) {
     let baseline;
     if (lastText !== null) baseline = lastText + SUBTITLE_TO_HEADING;
     else if (lastBottom !== null) baseline = lastBottom + ROW_TO_HEADING;
     else baseline = TITLE_Y;
-    // The heading needs room for itself and at least one row under it.
-    if (baseline + TEXT_TO_ROW + z.box > BOTTOM) {
+    if (!fits(baseline + TEXT_TO_ROW, firstItem)) {
       newPage();
       baseline = TITLE_Y;
     }
@@ -163,18 +186,12 @@ export function layoutPractice(items, options = {}) {
     nextTop = baseline + TEXT_TO_ROW;
   }
 
-  // One row: number, boxes (with or without the word), and side B or an answer line.
-  function row(number, item, showWord, showSideB) {
-    if (nextTop + z.box > BOTTOM) newPage();
-    const top = nextTop;
-    const chars = [...item.word];
+  // A line of boxes from LEFT, top at `top`: outline and dashed centre cross in every box, and
+  // the characters in KaiTi when showWord.
+  function boxLine(top, chars, showWord) {
     const k = chars.length;
     const boxLeft = LEFT;
     const boxRight = LEFT + k * box;
-
-    text(`${number}.`, NUMBER_RIGHT, top + z.numberY, 10, { align: 'right' });
-
-    // Boxes: outline and dashed centre cross in every box.
     page.grid.push({ x1: x(boxLeft), y1: y(top), x2: x(boxRight), y2: y(top) });
     page.grid.push({ x1: x(boxLeft), y1: y(top + box), x2: x(boxRight), y2: y(top + box) });
     for (let c = 0; c <= k; c++) {
@@ -185,8 +202,49 @@ export function layoutPractice(items, options = {}) {
       const cx = boxLeft + c * box + box / 2;
       page.crosses.push({ x1: x(boxLeft + c * box), y1: y(top + box / 2), x2: x(boxLeft + (c + 1) * box), y2: y(top + box / 2) });
       page.crosses.push({ x1: x(cx), y1: y(top), x2: x(cx), y2: y(top + box) });
-      if (showWord) page.chars.push({ ch: chars[c], font: 'kai', cx: x(cx), cy: y(top + box / 2) });
+      if (showWord) page.chars.push({ ch: chars[c], font: kaiRowFont(chars[c]), cx: x(cx), cy: y(top + box / 2) });
     }
+  }
+
+  // A wide row: number, the boxes on as many lines as needed, then the pinyin and meaning
+  // (side B) or two answer lines under them.
+  function wideRow(number, item, showWord, showSideB) {
+    const chars = [...item.word];
+    const perLine = wideLineChars(box);
+    const lines = Math.ceil(chars.length / perLine);
+    if (!fits(nextTop, item)) newPage();
+    const top = nextTop;
+    text(`${number}.`, NUMBER_RIGHT, top + z.numberY, 10, { align: 'right' });
+    for (let line = 0; line < lines; line++) {
+      boxLine(top + line * box, chars.slice(line * perLine, (line + 1) * perLine), showWord);
+    }
+    const under = top + lines * box;
+    if (showSideB) {
+      if (item.pinyin) text(item.pinyin, LEFT, under + 5.5, z.pinyinSize, { maxWidth: x(RIGHT - LEFT) });
+      if (item.meaning) text(`- ${item.meaning}`, LEFT, under + 11, z.meaningSize, { maxWidth: x(RIGHT - LEFT) });
+    } else {
+      for (const lineY of [under + 6, under + WIDE_TEXT_END]) {
+        page.marks.push({ x1: x(LEFT), y1: y(lineY), x2: x(RIGHT), y2: y(lineY), kind: 'answer' });
+      }
+    }
+    lastText = null;
+    lastBottom = under + WIDE_TEXT_END;
+    nextTop = under + WIDE_NEXT;
+  }
+
+  // One row: number, boxes (with or without the word), and side B or an answer line.
+  function row(number, item, showWord, showSideB) {
+    if ([...item.word].length > maxChars) {
+      wideRow(number, item, showWord, showSideB);
+      return;
+    }
+    if (!fits(nextTop, item)) newPage();
+    const top = nextTop;
+    const chars = [...item.word];
+    const k = chars.length;
+
+    text(`${number}.`, NUMBER_RIGHT, top + z.numberY, 10, { align: 'right' });
+    boxLine(top, chars, showWord);
 
     // Side B starts after the boxes (never before the third box, as in the sample).
     const pinyinX = LEFT + Math.max(3, k) * box + 6;
@@ -214,7 +272,7 @@ export function layoutPractice(items, options = {}) {
       'Character shown: write the pinyin and meaning on the line. Pinyin shown: write the character in the boxes.');
     let number = 1;
     practiceRounds(items, rounds, seed).forEach((round, r) => {
-      roundHeading(`Round ${r + 1}`);
+      roundHeading(`Round ${r + 1}`, items[round[0].index]);
       for (const { index, show } of round) {
         row(number++, items[index], show === 'word', show === 'sideB');
       }

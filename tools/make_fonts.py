@@ -6,6 +6,7 @@ Needs fontTools (see tools/requirements-dev.txt). It reads the full fonts in fon
 and writes:
 
   fonts/ukai-cn.ttf        KaiTi: AR PL UKai CN, cut down to the characters of 通用规范汉字表
+                           and the sentence punctuation that gets its own box
   fonts/noto-sans-sc.ttf   print: Noto Sans SC Regular, cut down the same way, plus the Latin
                            letters, pinyin tone letters and punctuation the labels need
   data/font-chars.txt      every Chinese character that BOTH fonts have (the check screen
@@ -42,10 +43,15 @@ EXTRA_RANGES = [
     (0x2010, 0x2027),  # dashes, quotes, ellipsis
     (0x3000, 0x303F),  # Chinese punctuation
     (0xFF01, 0xFF5E),  # full-width punctuation and letters
+    (0x2192, 0x2192),  # the arrow of "nǐ → ní" (pinyin as said)
 ]
 EXTRA = [chr(cp) for start, end in EXTRA_RANGES for cp in range(start, end + 1)]
 # The header text names the two fonts in Chinese.
 HEADER_HANZI = list("楷体黑体")
+
+# Sentence punctuation: a sentence is written with it, one box each, in both fonts.
+# The same marks as PUNCTUATION in js/extract.js (a test checks that both fonts have them).
+PUNCTUATION = list("。，、！？：；“”‘’《》…—")
 
 
 def cut_down(font, characters, notice):
@@ -76,10 +82,10 @@ def main():
     kai_has = has_chars(kai)
     kai_notice = (
         f"Modified version of AR PL UKai CN for Hanzi Grid: reduced on {TODAY} with fontTools "
-        "pyftsubset to the characters of 通用规范汉字表 (2013) that the font contains. "
-        "Licensed under the Arphic Public License (see LICENSE-ukai.txt)."
+        "pyftsubset to the characters of 通用规范汉字表 (2013) that the font contains, and "
+        "Chinese punctuation. Licensed under the Arphic Public License (see LICENSE-ukai.txt)."
     )
-    cut_down(kai, [ch for ch in HANZI if ch in kai_has], kai_notice)
+    cut_down(kai, [ch for ch in HANZI + PUNCTUATION if ch in kai_has], kai_notice)
     kai.save(str(ROOT / "fonts" / "ukai-cn.ttf"))
 
     # Print: Noto Sans SC is a variable font whose default weight is Thin (100); make the
@@ -92,7 +98,7 @@ def main():
         "with fontTools to the characters of 通用规范汉字表 (2013) plus Latin, pinyin and "
         "punctuation. Licensed under the SIL Open Font License 1.1 (see OFL-notosanssc.txt)."
     )
-    wanted = [ch for ch in HANZI + HEADER_HANZI + EXTRA if ch in noto_has]
+    wanted = [ch for ch in HANZI + HEADER_HANZI + EXTRA + PUNCTUATION if ch in noto_has]
     cut_down(noto, wanted, noto_notice)
     noto.save(str(ROOT / "fonts" / "noto-sans-sc.ttf"))
 
@@ -103,6 +109,8 @@ def main():
         missing = [ch for ch in HANZI if ch not in has]
         print(f"{name}: lacks {len(missing)} of {len(HANZI)} characters", "".join(missing[:40]))
     print(f"data/font-chars.txt: {len(both)} characters in both fonts")
+    lacking = [ch for ch in PUNCTUATION if ch not in kai_has or ch not in noto_has]
+    print("punctuation missing in a font:", "".join(lacking) or "none")
     for path in ("fonts/ukai-cn.ttf", "fonts/noto-sans-sc.ttf"):
         size = (ROOT / path).stat().st_size
         print(f"{path}: {size / 1e6:.2f} MB")

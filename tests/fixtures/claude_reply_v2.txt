@@ -1,0 +1,64 @@
+```
+# Bài 3
+1 | 女朋友 | nǚ péng you | girlfriend
+> 女 | nǚ | woman
+> 朋 | péng | friend
+> 友 | yǒu → you | friend
+1 | 哪 | nǎ | which
+1 | 国 | guó | country
+1 | 她 | tā | she
+2 | 喂 | wèi | hello (on the phone)
+2 | 姐姐 | jiě jie | older sister
+> 姐 | jiě | older sister
+> 姐 | jiě → jie | older sister
+2 | 工作 | gōng zuò | work, job
+> 工 | gōng | work
+> 作 | zuò | to do; to make
+2 | 还 | hái | still, also
+3 | 忙 | máng | busy
+3 | 吗 | ma | question particle
+3 | 对 | duì | correct, right
+3 | 太 | tài | too, very
+4 | 想 | xiǎng | to miss, to want
+4 | 中国 | zhōng guó | China
+> 中 | zhōng | middle
+> 国 | guó | country
+4 | 法国 | fǎ guó | France
+> 法 | fǎ | law; method
+> 国 | guó | country
+4 | 中文 | zhōng wén | Chinese language
+> 中 | zhōng | middle
+> 文 | wén | writing; language
+5 | 越南 | yuè nán | Vietnam
+> 越 | yuè | to cross
+> 南 | nán | south
+5 | 泰国 | tài guó | Thailand
+> 泰 | tài | peaceful
+> 国 | guó | country
+# Bài 4
+6 | 有 | yǒu | to have
+6 | 多少 | duō shao | how many, how much
+> 多 | duō | many
+> 少 | shǎo → shao | few
+6 | 个 | gè | measure word
+6 | 哥哥 | gē ge | older brother
+> 哥 | gē | older brother
+> 哥 | gē → ge | older brother
+7 | 呢 | ne | question particle
+7 | 没有 | méi yǒu | not have
+> 没 | méi | not
+> 有 | yǒu | to have
+7 | 家 | jiā | home, family
+7 | 口 | kǒu | measure word for family members
+8 | 爸爸 | bà ba | dad
+> 爸 | bà | dad
+> 爸 | bà → ba | dad
+8 | 妈妈 | mā ma | mum
+> 妈 | mā | mum
+> 妈 | mā → ma | mum
+8 | 妹妹 | mèi mei | younger sister
+> 妹 | mèi | younger sister
+> 妹 | mèi → mei | younger sister
+8 | 和 | hé | and
+# total: 30
+```

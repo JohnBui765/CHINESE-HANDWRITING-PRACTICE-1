@@ -231,51 +231,129 @@ test('practice sheet: missing pinyin is listed but still prints, in 14, 12 and 1
   await context.close();
 });
 
-test('Split, Split all, and the pinyin prompt whose reply fills in the list', async () => {
+test('Split keeps the word with its characters under it; the pinyin prompt fills them in', async () => {
   const { context, page, problems } = await openApp({ permissions: ['clipboard-read', 'clipboard-write'] });
   let questions = 0;
   page.on('dialog', dialog => { questions++; dialog.accept(); });
   await page.waitForTimeout(300);
   await pasteAndRead(page, '# Bài 3\n女朋友 | nǚ péngyou | girlfriend\n姐姐 | jiějie | older sister\n国 | guó | country\n中国 | Zhōngguó | China');
 
-  // Split one word: its characters take its place, with the pinyin of the word.
+  // Split one word: it stays, with its characters under it and the pinyin of the word.
   await page.click('#list .word:nth-child(1) button[data-action="split"]');
-  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐姐', '国', '中国']);
-  assert.match(await page.textContent('#list .word:nth-child(3) .info'), /you/);
-  assert.ok((await flagsOf(page, 2)).some(f => f.startsWith('warn') && f.includes('Pinyin taken from 女朋友')));
-  // A single character has no Split button.
-  assert.equal(await page.locator('#list .word:nth-child(1) button[data-action="split"]').count(), 0);
+  assert.deepEqual(await wordsOnScreen(page), ['女朋友', '女', '朋', '友', '姐姐', '国', '中国']);
+  assert.equal(await page.locator('#list .word.part').count(), 3);
+  assert.match(await page.textContent('#list .word:nth-child(4) .info'), /you/);
+  assert.ok((await flagsOf(page, 3)).some(f => f.startsWith('warn') && f.includes('Pinyin taken from 女朋友')));
+  // A single character has no Split button; Unsplit takes the characters away again.
+  assert.equal(await page.locator('#list .word:nth-child(2) button[data-action="split"]').count(), 0);
+  await page.click('#list .word:nth-child(1) button[data-action="unsplit"]');
+  assert.deepEqual(await wordsOnScreen(page), ['女朋友', '姐姐', '国', '中国']);
 
-  // Split all: one question, repeats removed, 国 keeps its own pinyin and meaning.
+  // Split all: one question. A character already in the list is a grey repeat, not printed.
   await page.click('#split-all');
   assert.equal(questions, 1);
-  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐', '国', '中']);
-  assert.match(await page.textContent('#notices'), /Split 2 word\(s\) into characters; 2 repeated character\(s\) removed/);
-  assert.ok(!(await flagsOf(page, 4)).some(f => f.includes('Pinyin taken')));
+  assert.deepEqual(await wordsOnScreen(page), ['女朋友', '女', '朋', '友', '姐姐', '姐', '姐', '国', '中国', '中', '国']);
+  assert.equal(await page.locator('#list .word.repeat').count(), 2);
+  assert.match(await page.textContent('#notices'), /2 repeat\(s\) in grey/);
+  // 国 under 中国 took its pinyin and meaning from the 国 row.
+  assert.match(await page.textContent('#list .word:nth-child(11) .info'), /guó country/);
+  await page.click('#tab-sheet');
+  assert.match(await page.textContent('#sheet-summary'), /9 word\(s\)/);
+  await page.click('#tab-words');
+  // "Print again" prints a repeat anyway; "Print once" undoes it.
+  await page.click('#list .word:nth-child(11) button[data-action="again"]');
+  assert.equal(await page.locator('#list .word.repeat').count(), 1);
+  await page.click('#list .word:nth-child(11) button[data-action="once"]');
+  assert.equal(await page.locator('#list .word.repeat').count(), 2);
   await page.click('#split-all');
   assert.match(await page.textContent('#list-message'), /nothing to split/);
 
-  // The prompt lists only the characters that need pinyin or a meaning.
+  // The prompt lists each word whose characters need help, with all its characters.
   await page.click('#copy-pinyin-prompt');
   await page.waitForSelector('#list-message.ok');
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  assert.ok(copied.includes('THE LIST:\n女\n朋\n友\n姐\n中\n'), copied.slice(-40));
+  assert.ok(copied.endsWith('THE LIST:\n女朋友\n> 女\n> 朋\n> 友\n姐姐\n> 姐\n> 姐\n中国\n> 中\n> 国\n'), copied.slice(-80));
 
-  // The AI's reply fills in the list: same order, rows kept, warnings gone, no question asked.
-  await pasteAndRead(page, '```\n女 | nǚ | woman\n朋 | péng | friend\n友 | yǒu | friend\n姐 | jiě | older sister\n中 | zhōng | middle\n```');
+  // The AI's reply fills in each character place by place: same order, rows kept, no question.
+  await pasteAndRead(page, '```\n女朋友 | nǚ péngyou | girlfriend\n> 女 | nǚ | woman\n> 朋 | péng | friend\n' +
+    '> 友 | yǒu → you | friend\n姐姐 | jiějie | older sister\n> 姐 | jiě | older sister\n> 姐 | jiě → jie | older sister\n' +
+    '中国 | Zhōngguó | China\n> 中 | zhōng | middle\n> 国 | guó | country\n```');
   assert.equal(questions, 1);
-  assert.match(await page.textContent('#message'), /Filled in the pinyin and meaning of 5 word/);
-  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐', '国', '中']);
-  assert.match(await page.textContent('#list .word:nth-child(3) .info'), /yǒu friend/);
-  for (let i = 0; i < 6; i++) assert.ok(!(await flagsOf(page, i)).some(f => f.includes('Pinyin taken')), `word ${i}`);
-  assert.equal(await page.textContent('#notices'), '');
+  assert.match(await page.textContent('#message'), /Filled in the pinyin and meaning of 6 word/);
+  assert.match(await page.textContent('#list .word:nth-child(4) .info'), /yǒu → you friend/);
+  const count = await page.locator('#list .word').count();
+  for (let i = 0; i < count; i++) assert.ok(!(await flagsOf(page, i)).some(f => f.includes('Pinyin taken')), `word ${i}`);
+  assert.doesNotMatch(await page.textContent('#notices'), /Split /);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('chinese-handwriting-practice-1.current')).entries);
   assert.ok(saved.every(entry => entry.rows === 3));
 
   // A reply that only repeats the prompt's example is not loaded.
-  await pasteAndRead(page, '山 | shān | mountain\n水 | shuǐ | water');
+  await pasteAndRead(page, '山 | shān | mountain\n水果 | shuǐguǒ | fruit\n> 水 | shuǐ → shuí | water');
   assert.match(await page.textContent('#message'), /only repeats the example/);
-  assert.deepEqual(await wordsOnScreen(page), ['女', '朋', '友', '姐', '国', '中']);
+  assert.equal(await page.locator('#list .word').count(), count);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('an answer with "> " lines and sentences: parts under their word, repeats in grey, every sheet prints', async () => {
+  const { context, page, problems } = await openApp({ permissions: ['clipboard-read', 'clipboard-write'] });
+  await page.waitForTimeout(300);
+  // Both new prompts are on buttons.
+  await page.click('#copy-sentence-prompt');
+  await page.waitForSelector('#message.ok');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), fs.readFileSync(path.join(ROOT, 'prompts', 'sentences.txt'), 'utf-8'));
+
+  const sentence = '你好！我叫李小雨。我是中国人，我买一本书。';
+  const answer = [
+    '```', '# Bài 9',
+    '1 | 二十 | èrshí | twenty', '> 二 | èr | two', '> 十 | shí | ten',
+    '1 | 十一 | shíyī | eleven', '> 十 | shí | ten', '> 一 | yī | one',
+    '2 | 我买一本书。 | Wó mǎi yì běn shū. | I buy a book.', '> 我 | wǒ → wó | I', '> 买 | mǎi | to buy',
+    '> 一 | yī → yì | one', '> 本 | běn | (measure word)', '> 书 | shū | book',
+    `2 | ${sentence} | Ní hǎo! Wǒ jiào Lǐ Xiáoyǔ. Wǒ shì Zhōngguó rén, wó mǎi yì běn shū. | Hello! I am Li Xiaoyu. I am Chinese, I buy a book.`,
+    '# total: 4', '```',
+  ].join('\n');
+  // An unfinished answer is not read; all its parts pasted together are.
+  await pasteAndRead(page, answer.replace('# total: 4', '# continue from page 3'));
+  assert.match(await page.textContent('#message'), /not finished: the AI stopped before page 3/);
+  await pasteAndRead(page, answer);
+  assert.match(await page.textContent('#message'), /Read 4 word\(s\) with 9 line\(s\) under them/);
+  assert.equal(await page.locator('#list .word.part').count(), 9);
+  assert.equal(await page.locator('#list .word.repeat').count(), 2);
+  assert.match(await page.textContent('#list .word.repeat >> nth=1'), /yī → yì/);
+  assert.equal(await page.textContent('#notices'), '2 repeat(s) in grey: a word is printed only the first time it appears. Press “Print again” to print one anyway.');
+  // No warning on a part whose pinyin is the character's own; the sentence keeps its punctuation.
+  assert.deepEqual(await flagsOf(page, 1), []);
+  assert.ok((await wordsOnScreen(page)).includes(sentence));
+
+  // Save list writes the "> " lines and reading the file back gives the same list.
+  const [listDownload] = await Promise.all([page.waitForEvent('download'), page.click('#save-list')]);
+  const listFile = path.join(OUT, 'nested-list.txt');
+  await listDownload.saveAs(listFile);
+  const saved = fs.readFileSync(listFile, 'utf-8');
+  assert.match(saved, /\n> 我 \| wǒ → wó \| I\n/);
+  assert.ok(saved.includes(`\n${sentence} | `));
+
+  // Every sheet: the long sentence carries on to the next line; arrows and punctuation print.
+  for (const size of ['small', 'large']) {
+    const { file } = await makePdf(page, size, `nested-${size}.pdf`);
+    if (HAVE_PYMUPDF) {
+      const text = checkPdf(file).text.join('');
+      assert.ok(text.includes('。') && text.includes('！'), size);
+      if (size === 'large') assert.ok(text.includes('wǒ → wó'));
+    }
+  }
+  await page.check('input[name="sheet-type"][value="practice"]');
+  await page.click('#make-pdf');
+  await page.waitForSelector('#save-pdf:not([hidden])', { timeout: 60_000 });
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#save-pdf')]);
+  const practiceFile = path.join(OUT, 'nested-practice.pdf');
+  await download.saveAs(practiceFile);
+  if (HAVE_PYMUPDF) {
+    const text = checkPdf(practiceFile).text.join('\n');
+    assert.match(text, /PART 3: MIXED PRACTICE \(33\)/);   // 11 printed items (no repeats) x 3 rounds
+    assert.ok(text.includes('Hello! I am Li Xiaoyu.'));
+  }
   assert.deepEqual(problems, []);
   await context.close();
 });

@@ -1,31 +1,122 @@
-You are copying Chinese vocabulary from the attached worksheet (PDF or images) for a
-handwriting-practice app. Accuracy is the only goal: the learner is a beginner and cannot
-check your work.
+ROLE AND GOAL
+You copy Chinese vocabulary from the attached pages (PDF pages or images of worksheets,
+vocabulary lists or slides) into a fixed format for a handwriting-practice app. Accuracy is
+the only goal: the learner is a beginner and cannot check your work. A flagged guess (" ?")
+is better than a silent mistake.
 
-RULES
-1. Read every page, in order. Never skip, summarise or stop early.
-2. One line per vocabulary word, in the order it appears.
+HOW TO WORK
+1. Number the pages 1, 2, 3 ... across all attachments, in the order given (each PDF page
+   or image is one page). "Page number" means this position, not a number printed on a page.
+2. Read every page visually, top to bottom (two columns: left column first). If you use OCR
+   software, check every character against the image.
+3. Before replying, go through the CHECK list and fix anything that fails. Do not explain,
+   comment or repeat these instructions. When in doubt, follow the FORMAT EXAMPLE.
+
+WORDS
+4. One word line per vocabulary word, in page order.
    - Worksheets with boxes: the word is the Chinese text in each box's header line, before
      /pinyin/. If that line has no Chinese, the word is the bold character at the start of
      the box's first row.
-   - Any other document: every Chinese word or phrase, in reading order.
-3. Ignore page titles (e.g. "Bài 3 我是中国人"), stroke-order steps, repeated model
-   characters, empty grids, Vietnamese, English and numbers.
-4. Copy characters and pinyin exactly as printed, in simplified Chinese. Do not correct,
-   translate, convert to traditional characters, or add anything that is not on the page.
-   The only exception is the meaning column: a short English meaning (1-5 words) that you
-   write yourself.
-5. If a word appears twice, write it twice.
-6. If you are not completely sure of any character in a word, end that line with " ?".
+   - Vocabulary lists and tables (生词): the Chinese word of each entry.
+   - In worksheets and lists, a word that appears twice is written twice.
+5. Running text (sentences, dialogues): split it into words (学生, 多少, 不客气) and write
+   each word once, where it first appears. Names inside the text count as words.
+6. Do not copy as words: titles (e.g. "Bài 3 我是中国人"; use only the lesson name, Bài 3,
+   for the "#" line), instructions to the learner, tabs and buttons (生词 语法 课文),
+   speaker labels, part-of-speech labels (n., v., 名, 动), stroke-order steps, repeated
+   model and tracing characters, empty grids, page numbers, numbers written in digits,
+   Vietnamese and English (except as the source of meanings, rule 8). If two images show
+   the same page, copy it once.
+7. Copy characters exactly as printed, in simplified Chinese: never correct them or convert
+   them to traditional characters. Copy pinyin exactly as printed, without slashes. If no
+   pinyin is printed, write standard dictionary pinyin: tone marks, syllables of one word
+   together (xuésheng), names capitalised (Zhōngguó).
+8. English meaning: the sense used on the page, 1-6 words. If the page prints a meaning
+   (Vietnamese or English), translate or copy it instead of choosing your own, and keep
+   every meaning given, separated by "; " (想: to miss; to want). Names: Li Ming (name).
+   Places: their English name (越南: Vietnam).
+9. Unsure of any character (blurred, cut off at the edge, covered by a mouse pointer)?
+   Write your best reading and end that word line with " ?". Never leave a word out.
 
-OUTPUT: reply with ONLY one code block in exactly this format, nothing before or after it.
-- A "#" line with the lesson name as printed at the top (e.g. # Bài 3), again whenever it changes.
-- Then one line per word:  page number | word | pinyin as printed (empty if none) | English meaning
-- Last line: # total: <number of word lines>
+CHARACTER LINES
+10. Below every word of two or more characters, write one character line per character, in
+    order, repeats included (姐姐 gets two). One-character words get none.
+    - Pinyin: the reading the character has in this word, with its full dictionary tone
+      (还 in 还是 = hái; 识 in 认识 = shí). Characters with no tone in this use stay
+      toneless (们 men, 吗 ma, 的 de).
+    - If the character is said with a different tone in this word, add " → " and the tone
+      as said (你: nǐ → ní). Apply TONE CHANGES even when the printed pinyin does not show
+      them; word lines always keep the printed pinyin.
+    - Meaning: the character's own meaning in 1-4 English words (友: friend; 起: to rise).
+      Characters that only do grammar get their job in brackets: 们 (plural suffix),
+      吗 (question particle).
+    - Unsure of a reading or tone? End that character line with " ?".
+
+TONE CHANGES (inside the word)
+a. 3rd + 3rd (the second not neutral): the first becomes 2nd (你好: 你 nǐ → ní). For three or
+   more 3rd tones, work from the smallest meaning unit outward, using the tones as already
+   changed: 展览馆 = [展览]馆 → zhánlánguǎn; 小老虎 = 小[老虎] → xiǎo láohǔ.
+b. 3rd + neutral tone: usually no change (姐姐 jiějie, 你们 nǐmen); a few words do change
+   (小姐 xiáojie, 哪里 náli). If unsure, keep the 3rd tone and add " ?".
+c. 不 bù → bú before a 4th tone (不是, 不客气).
+d. 一 yī → yí before a 4th tone (一个, 一样); yī → yì before a 1st, 2nd or 3rd tone (一天,
+   一年, 一起). 一 stays yī as a digit or ordinal, in dates and at the end of a word
+   (第一, 一月, 十一).
+e. For 不 and 一, judge by the next character's dictionary tone, even when it is said
+   neutral (一个 yí ge).
+f. 不 and 一 are neutral inside doubled forms (是不是, 看一看) and in verb + 不 +
+   complement (对不起 duìbuqǐ). This overrides c and d.
+g. A syllable printed without a tone mark is neutral in this word (朋友 printed péngyou:
+   友 yǒu → you). With no printed pinyin, use the dictionary's neutral tones.
+h. 儿 used as an r-ending becomes r (哪儿: 儿 ér → r).
+i. No other tone changes; 七 and 八 never change.
+
+OUTPUT
+Reply with ONLY one code block in exactly this format, nothing before or after it:
+- A "#" line with the lesson name as printed (e.g. # Bài 3), again whenever it changes.
+- Word line:       page number | word | pinyin as printed (empty if none) | English meaning
+- Character line:  > character | pinyin (plus " → " and the tone as said, if it changes) | meaning
+- Last line: # total: <number of word lines> (character lines are not counted)
+
+CHECK
+- Every page is covered, in order; nothing skipped or summarised.
+- Each word's character lines, read top to bottom, spell the word exactly.
+- No character lines under one-character words.
+- Every character line has a pinyin and a meaning.
+- Every arrow comes from a rule in TONE CHANGES; word lines keep the printed pinyin.
+- "# total" equals the number of word lines.
+
+LONG FILES
+If the answer will not fit in one reply, stop after a complete page and make the last line
+"# continue from page N". When told "continue", go on from page N with no repeats. Only the
+final reply ends with "# total", counting every part.
+
+NOTHING TO COPY
+If the attachments contain no readable Chinese, reply with one line:
+# nothing to copy: <reason>
 
 FORMAT EXAMPLE (made-up, not the answer):
 # Bài 9
-1 | 学生 | xué sheng | student
 1 | 他 | tā | he
+1 | 你好 | nǐ hǎo | hello
+> 你 | nǐ → ní | you
+> 好 | hǎo | good
+1 | 奶奶 | nǎinai | grandmother
+> 奶 | nǎi | grandma; milk
+> 奶 | nǎi → nai | grandma; milk
+1 | 看 | kàn | to look; to read
+2 | 不客气 | bù kèqi | you're welcome
+> 不 | bù → bú | not
+> 客 | kè | guest
+> 气 | qì → qi | air
+2 | 一起 | yìqǐ | together
+> 一 | yī → yì | one
+> 起 | qǐ | to rise
+2 | 李小雨 | Lǐ Xiǎoyǔ | Li Xiaoyu (name)
+> 李 | lǐ | Li (surname)
+> 小 | xiǎo → xiáo | small
+> 雨 | yǔ | rain
 2 | 老师 | lǎo shī | teacher ?
-# total: 3
+> 老 | lǎo | old
+> 师 | shī | teacher
+# total: 8

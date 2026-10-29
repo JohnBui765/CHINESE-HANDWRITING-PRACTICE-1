@@ -2,7 +2,7 @@
 // The numbers come from the owner's sample HSK1_Bai3-4_practice_kai.pdf (14 mm boxes).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutPractice, practiceRounds, maxPracticeChars } from '../js/practice.js';
+import { layoutPractice, practiceRounds, maxPracticeChars, wideLineChars } from '../js/practice.js';
 import { MM, PAGE_HEIGHT } from '../js/layout.js';
 
 // The 30 words of the sample (Bài 3–4).
@@ -108,16 +108,48 @@ test('words without pinyin or meaning still print; with neither, Part 3 always s
   assert.ok(!all.includes('- '), 'no empty meaning dash');
 });
 
-test('long words move pinyin to the right; too long words are refused', () => {
+test('long words move pinyin to the right; longer ones get a wide row', () => {
   const { pages } = layoutPractice([{ word: '很高兴认识', pinyin: 'hěn gāoxìng rènshi', meaning: 'nice to meet you' }], { box: 14, rounds: 1, seed: 1 });
   const pinyin = pages[0].texts.find(t => t.text.startsWith('hěn'));
   assert.equal(Math.round(pinyin.x / MM), 25 + 5 * 14 + 6);
   assert.equal(maxPracticeChars(14), 6);
-  assert.throws(() => layoutPractice([{ word: '一二三四五六七', pinyin: '', meaning: '' }], { box: 14 }), /holds 6/);
+  assert.equal(wideLineChars(14), 12);
+
+  // A sentence of 15 boxes: 12 on the first line, 3 on the second, then pinyin and meaning
+  // under the boxes, from x = 25 mm.
+  const sentence = { word: '你好！我叫李小雨。我买一本书。', pinyin: 'Ní hǎo! Wǒ jiào Lǐ Xiáoyǔ. Wó mǎi yì běn shū.', meaning: 'Hello! ...' };
+  const wide = layoutPractice([sentence], { box: 14, rounds: 1, seed: 2 });
+  const part1 = wide.pages[0];
+  assert.equal(part1.chars.length, 15);
+  const fromTop = y => (PAGE_HEIGHT - y) / MM;
+  assert.equal(Math.round(part1.chars[12].cx), Math.round(part1.chars[0].cx));
+  assert.equal(Math.round(fromTop(part1.chars[12].cy) - fromTop(part1.chars[0].cy)), 14);
+  const py = part1.texts.find(t => t.text === sentence.pinyin);
+  assert.equal(Math.round(py.x / MM), 25);
+  assert.equal(Math.round(fromTop(py.y) * 10) / 10, 30.5 + 2 * 14 + 5.5);
+  // Part 3: the sentence with two answer lines, or empty boxes with side B.
+  const part3 = wide.pages[2];
+  const answers = part3.marks.filter(m => m.kind === 'answer').length;
+  assert.ok((answers === 2 && part3.chars.length === 15) || (answers === 0 && part3.chars.length === 0));
+  assert.throws(() => layoutPractice([{ word: '一'.repeat(300), pinyin: '', meaning: '' }], { box: 14 }), /too long for one page/);
 });
 
 test('rounds and box size are kept within their limits', () => {
   assert.match(layoutPractice(ITEMS.slice(0, 2), { rounds: 9 }).pages[2].texts[0].text, /\(10\)$/);   // 5 rounds x 2
   assert.match(layoutPractice(ITEMS.slice(0, 2), { rounds: 0 }).pages[2].texts[0].text, /\(6\)$/);    // default 3
   assert.equal(layoutPractice([], {}).pages.length, 0);
+});
+
+// Found by the independent review: a round heading must have its first row on the same page.
+test('a round heading is never left alone at the bottom of a page', () => {
+  const sentence = n => ({ word: '你'.repeat(n - 1) + '。', pinyin: 'nǐ', meaning: 'you' });
+  const word = w => ({ word: w, pinyin: 'nǐ', meaning: 'you' });
+  for (let seed = 1; seed <= 60; seed++) {
+    const items = [sentence(15), word('你'), word('你好'), word('你'), sentence(19), word('你好'), word('你'), word('你好')];
+    const { pages } = layoutPractice(items, { box: 14, rounds: 3, seed });
+    for (const page of pages) {
+      const last = page.texts[page.texts.length - 1];
+      assert.ok(!/^Round \d+$/.test(last.text), `seed ${seed}: "${last.text}" ends a page`);
+    }
+  }
 });

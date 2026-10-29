@@ -99,10 +99,32 @@ test('large boxes: labels leave out unknown parts', () => {
   assert.equal(labelText(item('国', 1)), '国');
 });
 
-test('words longer than the columns are refused', () => {
-  assert.throws(() => layoutSheet([item('一二三四五六七八九十一二三', 1)], 'large'), /only 12 columns/);
-  assert.doesNotThrow(() => layoutSheet([item('一二三四五六七八九十一二三', 1)], 'small'));
-  assert.throws(() => layoutSheet([item('一二三四五六七八九十一二三四五六七八九', 1)], 'small'), /only 18 columns/);
+test('a long sentence carries on to the next line: KaiTi row, print row, KaiTi row, print row', () => {
+  const sentence = '你好！我叫李小雨。我是中国人。我买一本书。';   // 21 boxes, punctuation included
+  for (const [size, columns, box] of [['small', 18, 10], ['large', 12, 15]]) {
+    const layout = layoutSheet([item(sentence, 3, 'Nǐ hǎo!', 'Hello!')], size);
+    assert.deepEqual(layout.blocks.map(b => b.rows), [2 * 2 + 3], size);
+    // The KaiTi row is every other one of the characters (KaiTi, print, KaiTi, print, ...).
+    const kai = layout.pages[0].chars.filter((_, i) => i % 2 === 0);
+    const print = layout.pages[0].chars.filter((_, i) => i % 2 === 1);
+    assert.equal(kai.length, 21);
+    // Punctuation in the KaiTi row comes from the print font (mainland position).
+    assert.deepEqual([kai[1].font, kai[2].font], ['kai', 'print']);
+    // The first character after a full line starts the next KaiTi row, two rows lower.
+    near(kai[columns].cx, kai[0].cx, `${size} x`);
+    near(kai[0].cy - kai[columns].cy, 2 * box * MM, `${size} y`);
+    near(kai[0].cy - print[0].cy, box * MM, `${size} print row`);
+    // Punctuation gets its own box.
+    assert.equal(kai[2].ch, '！');
+  }
+  // A sentence label leaves out the sentence (it is in the boxes).
+  assert.equal(labelText(item(sentence, 1, 'Nǐ hǎo!', 'Hello!')), 'Nǐ hǎo!   - Hello!');
+  // "Page" fills the rest of the page; a sentence too long for one page is refused.
+  assert.deepEqual(layoutSheet([item(sentence, 'Page')], 'small').blocks.map(b => b.rows), [26]);
+  assert.equal(emptyRows('Page', 'large', 2), 13);
+  assert.throws(() => layoutSheet([item('一'.repeat(97), 0)], 'large'), /too long for one page/);
+  assert.doesNotThrow(() => layoutSheet([item('一'.repeat(96), 0)], 'large'));
+  assert.throws(() => layoutSheet([item('一'.repeat(235), 0)], 'small'), /too long for one page/);
 });
 
 test('an empty list makes no pages', () => {

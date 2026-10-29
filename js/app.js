@@ -1,12 +1,18 @@
 // The screen: tabs, the check list, buttons. Only this file touches the page.
 // Reading text is in extract.js / readers.js; the PDF is built by sheet-worker.js.
 
-import { readText, compareReplies, countSyllables, toLessonText, safeFileName } from './extract.js';
+import {
+  readText, compareReplies, countSyllables, toLessonText, safeFileName, boxText, chineseChars, splitArrow, PUNCTUATION,
+} from './extract.js';
 import { readFile } from './readers.js';
-import { layoutSheet, emptyRows, SIZES } from './layout.js';
-import { layoutPractice, maxPracticeChars } from './practice.js';
+import { layoutSheet, emptyRows, modelLines, tooLongForPage, SIZES } from './layout.js';
+import { layoutPractice, practiceTooLong } from './practice.js';
 import { loadSettings, saveSettings, loadCurrent, saveCurrent, saveFile } from './store.js';
-import { splitEntries, allInList, fillIn, pinyinPrompt, isPinyinPromptExample } from './listedit.js';
+import {
+  splitEntries, canSplit, unsplit, deleteEntry, moveEntry, repeatFlags, printedEntries, partIndexes, groupEnd,
+  allInList, fillIn, pinyinPrompt, isPinyinPromptExample,
+} from './listedit.js';
+import { splitPinyin } from './pinyin.js';
 
 // ---------------------------------------------------------------------------------------
 // State
@@ -23,7 +29,8 @@ let worker = null;
 // Loaded at start-up (and cached by the service worker for offline use).
 let common = new Set();      // the 3,500 common characters
 let fontChars = new Set();   // characters that both fonts have
-let promptText = '';         // the AI prompt for worksheets
+let promptText = '';         // the AI prompt for words (+ characters)
+let sentencePromptText = ''; // the AI prompt for sentences (+ chunks)
 let pinyinPromptText = '';   // the AI prompt for pinyin and meanings
 
 const $ = id => document.getElementById(id);
@@ -64,10 +71,18 @@ function listMessage(text, kind = '') {
 // Warnings (orange) and errors (red) for one word
 // ---------------------------------------------------------------------------------------
 
-function checkEntry(entry) {
+// The pinyin fits the word: one syllable per character (counted, or cut by splitPinyin, which
+// also knows words ending in 儿 such as 哪儿 "nǎr").
+function pinyinFits(pinyin, chars) {
+  return countSyllables(pinyin) === [...chars].length || splitPinyin(pinyin, chars) !== null;
+}
+
+// The warnings and errors of the entry at `index` (a printed one: repeats are not checked).
+function checkEntry(entry, index) {
   const warnings = [];
   const errors = [];
-  const chars = [...entry.word];
+  const chars = chineseChars(entry.word);
+  const count = [...chars].length;
   if (entry.unsure) warnings.push('The AI was not sure (?)');
   if (entry.compare === 'differs') warnings.push(`The second AI read “${entry.other}”`);
   if (entry.compare === 'onlyA') warnings.push('Only the first AI found this word');
@@ -78,15 +93,15 @@ function checkEntry(entry) {
   } else if (entry.splitFrom) {
     warnings.push(`The pinyin of ${entry.splitFrom} could not be split: add it with Edit or “Copy AI prompt: pinyin & meaning”`);
   }
-  if (entry.pinyin) {
-    const syllables = countSyllables(entry.pinyin);
-    if (syllables !== chars.length) {
-      warnings.push(`The pinyin has ${syllables} syllable(s) for ${chars.length} character(s)`);
-    }
+  if (entry.pinyin && !pinyinFits(entry.pinyin, chars)) {
+    warnings.push(`The pinyin has ${countSyllables(entry.pinyin)} syllable(s) for ${count} character(s)`);
   }
-  const unusual = [...new Set(chars.filter(ch => !common.has(ch)))];
+  // The parts under a word must spell it.
+  const parts = partIndexes(list.entries, index).map(i => chineseChars(list.entries[i].word)).join('');
+  if (parts && parts !== chars) warnings.push(`The parts under it spell ${parts}, not ${chars}`);
+  const unusual = [...new Set([...chars].filter(ch => !common.has(ch)))];
   if (unusual.length && common.size) warnings.push(`Unusual character: ${unusual.join(' ')}`);
-  const missing = [...new Set(chars.filter(ch => !fontChars.has(ch)))];
+  const missing = [...new Set([...entry.word].filter(ch => !PUNCTUATION.includes(ch) && !fontChars.has(ch)))];
   if (missing.length && fontChars.size) {
     errors.push(`Not in the app's fonts: ${missing.join(' ')} (a traditional or rare character?)`);
   }
@@ -94,21 +109,16 @@ function checkEntry(entry) {
     // Missing pinyin or meaning never blocks printing; the spot is just left empty.
     if (!entry.pinyin) warnings.push('No pinyin: left empty on the practice sheet');
     if (!entry.meaning) warnings.push('No meaning: left empty on the practice sheet');
-    const max = maxPracticeChars(settings.practiceBox);
-    if (chars.length > max) {
-      errors.push(`Too long: ${chars.length} characters, a practice row with ${settings.practiceBox} mm boxes holds ${max}`);
-    }
-  } else {
-    const columns = SIZES[settings.boxSize].columns;
-    if (chars.length > columns) {
-      errors.push(`Too long: ${chars.length} characters, the sheet has ${columns} columns`);
-    }
+    if (practiceTooLong(entry.word, settings.practiceBox)) errors.push('Too long for one page: split it with Edit');
+  } else if (tooLongForPage(entry.word, settings.boxSize)) {
+    errors.push('Too long for one page: split it with Edit');
   }
   return { warnings, errors };
 }
 
 function errorCount() {
-  return list.entries.filter(entry => checkEntry(entry).errors.length).length;
+  const repeats = repeatFlags(list.entries);
+  return list.entries.filter((entry, i) => !repeats[i] && checkEntry(entry, i).errors.length).length;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -116,7 +126,7 @@ function errorCount() {
 // ---------------------------------------------------------------------------------------
 
 function rowsControl(entry, index) {
-  const max = SIZES[settings.boxSize].maxRows;
+  const lines = modelLines(entry.word, settings.boxSize);
   const box = el('div', { class: 'rows', role: 'group', 'aria-label': 'Empty rows' }, el('span', {}, 'Rows:'));
   for (const choice of [1, 3, 6, 'Page']) {
     box.append(el('button', {
@@ -125,17 +135,22 @@ function rowsControl(entry, index) {
     }, String(choice)));
   }
   box.append(el('input', {
-    type: 'number', min: 0, max, inputmode: 'numeric', 'aria-label': 'Number of empty rows',
-    'data-action': 'rows-number', 'data-index': index,
-    value: emptyRows(entry.rows, settings.boxSize),
+    type: 'number', min: 0, max: emptyRows('Page', settings.boxSize, lines), inputmode: 'numeric',
+    'aria-label': 'Number of empty rows', 'data-action': 'rows-number', 'data-index': index,
+    value: emptyRows(entry.rows, settings.boxSize, lines),
   }));
   return box;
+}
+
+// "nǐ → ní": the pinyin, and the pinyin as said when it differs.
+function pinyinText(entry) {
+  return entry.said ? `${entry.pinyin} → ${entry.said}` : entry.pinyin;
 }
 
 function editForm(entry, index) {
   const form = el('form', { class: 'edit-form', 'data-index': index },
     el('label', {}, 'Word', el('input', { type: 'text', name: 'word', lang: 'zh', value: entry.word })),
-    el('label', {}, 'Pinyin', el('input', { type: 'text', name: 'pinyin', value: entry.pinyin })),
+    el('label', {}, 'Pinyin (a tone change: nǐ → ní)', el('input', { type: 'text', name: 'pinyin', value: pinyinText(entry) })),
     el('label', {}, 'Meaning', el('input', { type: 'text', name: 'meaning', value: entry.meaning })),
     el('div', { class: 'buttons' },
       el('button', { type: 'submit', class: 'primary' }, 'Save'),
@@ -144,18 +159,38 @@ function editForm(entry, index) {
   return form;
 }
 
-function wordRow(entry, index) {
-  const { warnings, errors } = checkEntry(entry);
-  const info = [];
-  if (entry.pinyin) info.push(el('b', {}, entry.pinyin));
-  if (entry.meaning) info.push(' ', entry.meaning);
-  if (entry.page !== null && entry.page !== undefined) info.push(` · page ${entry.page}`);
+function button(action, index, text, more = {}) {
+  return el('button', { type: 'button', 'data-action': action, 'data-index': index, ...more }, text);
+}
 
-  const item = el('li', { class: 'word' },
+// One row of the check list. Parts (depth 1 and 2) are indented under their word; a repeat
+// is grey, is not printed and has only the "Print again" button.
+function wordRow(entry, index, repeat) {
+  const entries = list.entries;
+  const depth = entry.depth || 0;
+  const info = [];
+  if (entry.pinyin) info.push(el('b', {}, pinyinText(entry)));
+  if (entry.meaning) info.push(' ', entry.meaning);
+  if (depth === 0 && entry.page !== null && entry.page !== undefined) info.push(` · page ${entry.page}`);
+
+  const classes = ['word'];
+  if (depth) classes.push('part', `depth-${depth}`);
+  if (repeat) classes.push('repeat');
+  const item = el('li', { class: classes.join(' ') },
     el('div', { class: 'preview', lang: 'zh' },
       el('span', { class: 'kai' }, entry.word),
       el('span', { class: 'print' }, entry.word)),
     el('div', { class: 'info' }, ...(info.length ? info : ['no pinyin'])),
+  );
+  if (repeat) {
+    item.append(
+      el('p', { class: 'hint' }, 'Printed above: not printed again.'),
+      el('div', { class: 'actions' }, button('again', index, 'Print again')));
+    return item;
+  }
+
+  const { warnings, errors } = checkEntry(entry, index);
+  item.append(
     (warnings.length || errors.length) ? el('ul', { class: 'flags' },
       ...errors.map(text => el('li', { class: 'error' }, text)),
       ...warnings.map(text => el('li', { class: 'warn' }, text))) : el('div'),
@@ -164,28 +199,39 @@ function wordRow(entry, index) {
   );
   if (editing === index) {
     item.append(editForm(entry, index));
-  } else {
-    const last = list.entries.length - 1;
-    item.append(el('div', { class: 'actions' },
-      el('button', { type: 'button', 'data-action': 'edit', 'data-index': index }, 'Edit'),
-      el('button', { type: 'button', 'data-action': 'up', 'data-index': index, disabled: index === 0, 'aria-label': 'Move up' }, '↑'),
-      el('button', { type: 'button', 'data-action': 'down', 'data-index': index, disabled: index === last, 'aria-label': 'Move down' }, '↓'),
-      el('button', { type: 'button', 'data-action': 'merge', 'data-index': index, disabled: index === last, 'aria-label': 'Merge with next word' }, 'Merge ↓'),
-      [...entry.word].length > 1
-        ? el('button', { type: 'button', 'data-action': 'split', 'data-index': index, 'aria-label': 'Split into single characters' }, 'Split')
-        : null,
-      el('button', { type: 'button', 'data-action': 'delete', 'data-index': index }, 'Delete'),
-    ));
+    return item;
   }
+  const hasParts = partIndexes(entries, index).length > 0;
+  const actions = [button('edit', index, 'Edit')];
+  if (depth === 0) {
+    // Words move with their parts; Merge joins two words that have no parts.
+    const next = groupEnd(entries, index);
+    const canMerge = !hasParts && next < entries.length && groupEnd(entries, next) === next + 1;
+    actions.push(
+      button('up', index, '↑', { disabled: index === 0, 'aria-label': 'Move up' }),
+      button('down', index, '↓', { disabled: next >= entries.length, 'aria-label': 'Move down' }),
+      button('merge', index, 'Merge ↓', { disabled: !canMerge, 'aria-label': 'Merge with next word' }));
+  }
+  if (canSplit(entries, index)) actions.push(button('split', index, 'Split', { 'aria-label': 'List its characters under it' }));
+  if (hasParts) actions.push(button('unsplit', index, 'Unsplit', { 'aria-label': 'Remove the lines under it' }));
+  if (entry.again) actions.push(button('once', index, 'Print once'));
+  actions.push(button('delete', index, 'Delete'));
+  item.append(el('div', { class: 'actions' }, ...actions));
   return item;
 }
 
 function render() {
   $('list-name').value = list.name;
-  const words = $('list');
-  words.replaceChildren(...list.entries.map(wordRow));
+  const repeats = repeatFlags(list.entries);
+  $('list').replaceChildren(...list.entries.map((entry, i) => wordRow(entry, i, repeats[i])));
   $('empty').hidden = list.entries.length > 0;
-  $('notices').replaceChildren(...list.notices.map(text => el('p', { class: 'notice' }, text)));
+  const notices = [...list.notices];
+  const greyed = repeats.filter(Boolean).length;
+  if (greyed) {
+    notices.push(`${greyed} repeat(s) in grey: a word is printed only the first time it appears. ` +
+      'Press “Print again” to print one anyway.');
+  }
+  $('notices').replaceChildren(...notices.map(text => el('p', { class: 'notice' }, text)));
   renderSheetTab();
 }
 
@@ -214,10 +260,11 @@ function renderSheetTab() {
   } else if (errors) {
     summary.textContent = `${errors} word(s) have a red error. Fix them on tab 1 before making the PDF.`;
   } else {
+    const items = sheetItems();
     const pages = practice
-      ? layoutPractice(sheetItems(), practiceOptions(1)).pages.length
-      : layoutSheet(sheetItems(), settings.boxSize).pages.length;
-    summary.textContent = `“${list.name || 'Untitled'}”: ${list.entries.length} word(s) on ${pages} page(s).`;
+      ? layoutPractice(items, practiceOptions(1)).pages.length
+      : layoutSheet(items, settings.boxSize).pages.length;
+    summary.textContent = `“${list.name || 'Untitled'}”: ${items.length} word(s) on ${pages} page(s).`;
   }
   $('make-pdf').disabled = !list.entries.length || errors > 0;
 }
@@ -227,8 +274,9 @@ function renderMissing() {
   const box = $('missing');
   box.replaceChildren();
   if (settings.sheetType !== 'practice') return;
-  const noPinyin = list.entries.filter(entry => !entry.pinyin).map(entry => entry.word);
-  const noMeaning = list.entries.filter(entry => !entry.meaning).map(entry => entry.word);
+  const printed = printedEntries(list.entries);
+  const noPinyin = printed.filter(entry => !entry.pinyin).map(entry => entry.word);
+  const noMeaning = printed.filter(entry => !entry.meaning).map(entry => entry.word);
   if (noPinyin.length) box.append(el('p', { class: 'notice' }, `No pinyin (${noPinyin.length}): ${noPinyin.join(', ')}`));
   if (noMeaning.length) box.append(el('p', { class: 'notice' }, `No meaning (${noMeaning.length}): ${noMeaning.join(', ')}`));
   if (noPinyin.length || noMeaning.length) {
@@ -241,8 +289,11 @@ function practiceOptions(seed) {
   return { box: settings.practiceBox, rounds: settings.rounds, seed, name: list.name || '' };
 }
 
+// What goes on the sheet: every printed entry (not the repeats), with "nǐ → ní" pinyin.
 function sheetItems() {
-  return list.entries.map(({ word, pinyin, meaning, rows }) => ({ word, pinyin, meaning, rows }));
+  return printedEntries(list.entries).map(entry => ({
+    word: entry.word, pinyin: pinyinText(entry), meaning: entry.meaning, rows: entry.rows,
+  }));
 }
 
 // A new list was read: forget the old PDF, store and draw.
@@ -258,18 +309,28 @@ function listChanged() {
 // Getting words
 // ---------------------------------------------------------------------------------------
 
+// A reply that cannot be used: only the prompt's example, an unfinished answer, or "nothing to
+// copy". Returns the message to show, or ''.
+function unusable(result, which) {
+  if (result.nothing && !result.entries.length) return `${which}: the AI found nothing to copy (${result.nothing}).`;
+  if (result.echoedExample) return `${which} only repeats the example from the prompt. Paste the AI’s real answer.`;
+  if (result.continueFrom !== null && result.continueFrom !== undefined) {
+    return `${which} is not finished: the AI stopped before page ${result.continueFrom}. In the AI chat, type ` +
+      '“continue”. Then paste the next part at the end of the same box, under the first part, and press ' +
+      '“Read text” again.';
+  }
+  return '';
+}
+
 function useResult(result, second = null) {
-  if (result.echoedExample) {
-    showMessage('This reply only repeats the example from the prompt. Paste the AI’s real answer.', 'problem');
+  const problem = unusable(result, 'This reply') || (second && unusable(second, 'The second reply'));
+  if (problem) {
+    showMessage(problem, 'problem');
     return;
   }
   let entries = result.entries;
   const notices = [];
   if (second) {
-    if (second.echoedExample) {
-      showMessage('The second reply only repeats the example from the prompt.', 'problem');
-      return;
-    }
     entries = compareReplies(result.entries, second.entries);
     const differences = entries.filter(entry => entry.compare && entry.compare !== 'same').length;
     notices.push(differences
@@ -280,13 +341,14 @@ function useResult(result, second = null) {
     showMessage('No Chinese words found in this text.', 'problem');
     return;
   }
-  // A reply to "Copy AI prompt: pinyin & meaning": every pasted line with pinyin or a meaning
-  // is a word already in the list, so it fills in what is missing instead of replacing the list.
+  // A reply to "Copy AI prompt: pinyin & meaning" (lines without page numbers): every pasted
+  // line with pinyin or a meaning is a word already in the list, so it fills in what is
+  // missing instead of replacing the list. An answer with page numbers is always a new list.
   if (!second && isPinyinPromptExample(entries, list.entries)) {
     showMessage('This reply only repeats the example from the prompt. Paste the AI\u2019s real answer.', 'problem');
     return;
   }
-  if (!second && allInList(list.entries, entries)) {
+  if (!second && !result.isReply && allInList(list.entries, entries)) {
     const filled = fillIn(list.entries, entries);
     if (!filled.updated) {
       showMessage('Nothing to fill in: these words are already in your list with their pinyin and meaning. ' +
@@ -307,11 +369,13 @@ function useResult(result, second = null) {
   }
   list = {
     name: result.name,
-    entries: entries.map(entry => ({ ...entry, rows: settings.defaultRows })),
+    entries: entries.map(entry => ({ ...entry, splitFrom: '', again: false, rows: settings.defaultRows })),
     notices,
   };
   editing = -1;
-  showMessage(`Read ${entries.length} word(s).`, 'ok');
+  const words = entries.filter(entry => !(entry.depth > 0)).length;
+  const parts = entries.length - words;
+  showMessage(`Read ${words} word(s)${parts ? ` with ${parts} line(s) under them` : ''}.`, 'ok');
   listChanged();
 }
 
@@ -356,12 +420,13 @@ function copyText(text, onCopied) {
   }
 }
 
-function copyPrompt() {
-  if (!promptText) {
+// The two prompts for worksheets: words with their characters, or sentences with their chunks.
+function copyPrompt(text) {
+  if (!text) {
     showMessage('The prompt is not loaded yet. Try again in a moment.', 'problem');
     return;
   }
-  copyText(promptText,
+  copyText(text,
     () => showMessage('AI prompt copied. Paste it into ChatGPT, Gemini or Claude with your worksheet.', 'ok'));
 }
 
@@ -387,13 +452,13 @@ function copyPinyinPrompt() {
 // ---------------------------------------------------------------------------------------
 
 function onListClick(event) {
-  const button = event.target.closest('button[data-action]');
-  if (!button) return;
-  const index = Number(button.dataset.index);
+  const target = event.target.closest('button[data-action]');
+  if (!target) return;
+  const index = Number(target.dataset.index);
   const entries = list.entries;
-  switch (button.dataset.action) {
+  switch (target.dataset.action) {
     case 'rows': {
-      const value = button.dataset.rows;
+      const value = target.dataset.rows;
       entries[index].rows = value === 'Page' ? 'Page' : Number(value);
       break;
     }
@@ -404,22 +469,25 @@ function onListClick(event) {
       editing = -1;
       break;
     case 'up':
-      if (index > 0) [entries[index - 1], entries[index]] = [entries[index], entries[index - 1]];
+      list.entries = moveEntry(entries, index, -1);
+      editing = -1;
       break;
     case 'down':
-      if (index < entries.length - 1) [entries[index + 1], entries[index]] = [entries[index], entries[index + 1]];
+      list.entries = moveEntry(entries, index, 1);
+      editing = -1;
       break;
     case 'delete':
-      entries.splice(index, 1);
+      list.entries = deleteEntry(entries, index);
       editing = -1;
       break;
     case 'merge': {
       const [first, next] = [entries[index], entries[index + 1]];
-      if (!next) break;
+      if (!next || (next.depth || 0) !== 0) break;
       entries.splice(index, 2, {
         ...first,
         word: first.word + next.word,
         pinyin: [first.pinyin, next.pinyin].filter(Boolean).join(' '),
+        said: '',
         meaning: [first.meaning, next.meaning].filter(Boolean).join('; '),
         unsure: first.unsure || next.unsure,
         splitFrom: '',
@@ -434,6 +502,16 @@ function onListClick(event) {
       editing = -1;
       break;
     }
+    case 'unsplit':
+      list.entries = unsplit(entries, index);
+      editing = -1;
+      break;
+    case 'again':
+      entries[index].again = true;
+      break;
+    case 'once':
+      entries[index].again = false;
+      break;
     default:
       return;
   }
@@ -444,22 +522,23 @@ function onListChange(event) {
   const input = event.target;
   if (input.dataset.action !== 'rows-number') return;
   const index = Number(input.dataset.index);
-  const max = SIZES[settings.boxSize].maxRows;
+  const max = emptyRows('Page', settings.boxSize, modelLines(list.entries[index].word, settings.boxSize));
   let n = Math.floor(Number(input.value));
   if (!Number.isFinite(n) || n < 0) n = 0;
   list.entries[index].rows = n >= max ? 'Page' : n;
   listChanged();
 }
 
-// "Split all": every word with two or more characters becomes single characters.
+// "Split all": every word with two or more characters (and every chunk of a sentence) gets
+// its characters listed under it.
 function splitAll() {
-  const count = list.entries.filter(entry => [...entry.word].length > 1).length;
+  const repeats = repeatFlags(list.entries);
+  const count = list.entries.filter((_, i) => !repeats[i] && canSplit(list.entries, i)).length;
   if (!count) {
-    listMessage('There is nothing to split: every word has one character.', 'problem');
+    listMessage('There is nothing to split: every word has one character or its lines under it already.', 'problem');
     return;
   }
-  if (!window.confirm(`Split all ${count} word(s) into single characters? The pinyin comes from ` +
-    'each word and the meanings are left empty. (Save the list first if you want to keep the words.)')) return;
+  if (!window.confirm(`Split all ${count} word(s)? Each one stays, with its characters listed under it.`)) return;
   const result = splitEntries(list.entries);
   list.entries = result.entries;
   addSplitNotice(result);
@@ -468,18 +547,10 @@ function splitAll() {
   listChanged();
 }
 
-function addSplitNotice({ split, removed }) {
-  const text = `Split ${split} word(s) into characters` +
-    (removed ? `; ${removed} repeated character(s) removed.` : '.') +
-    ' The pinyin comes from the words and the meanings are empty: use \u201cCopy AI prompt: pinyin & meaning\u201d' +
-    ' to get each character\u2019s own.';
+function addSplitNotice({ split }) {
+  const text = `Split ${split} word(s): their characters are listed under them. Pinyin taken from a word ` +
+    'needs checking and meanings may be empty: \u201cCopy AI prompt: pinyin & meaning\u201d fills them in.';
   list.notices = [...list.notices.filter(notice => !notice.startsWith('Split ')), text];
-}
-
-// Only Chinese characters are kept in a word, as everywhere else.
-function chineseOnly(text) {
-  const found = readText(text.normalize('NFKC'), '').entries.map(entry => entry.word);
-  return found.join('');
 }
 
 function onEditSubmit(event) {
@@ -487,14 +558,18 @@ function onEditSubmit(event) {
   if (!form) return;
   event.preventDefault();
   const index = Number(form.dataset.index);
-  const word = chineseOnly(form.elements.word.value);
+  const word = boxText(form.elements.word.value);
   if (!word) {
     showMessage('A word needs at least one Chinese character.', 'problem');
     return;
   }
+  // A changed word no longer matches its lines under it: they go (Split makes new ones).
+  if (word !== list.entries[index].word) list.entries = unsplit(list.entries, index);
+  const { pinyin, said } = splitArrow(form.elements.pinyin.value.trim());
   Object.assign(list.entries[index], {
     word,
-    pinyin: form.elements.pinyin.value.trim(),
+    pinyin,
+    said,
     meaning: form.elements.meaning.value.trim(),
     unsure: false,
     splitFrom: '',   // the owner has checked the pinyin
@@ -505,14 +580,14 @@ function onEditSubmit(event) {
 
 function addWord(event) {
   event.preventDefault();
-  const word = chineseOnly($('add-word').value);
+  const word = boxText($('add-word').value);
   if (!word) {
     showMessage('Type or paste a word with Chinese characters.', 'problem');
     return;
   }
   list.entries.push({
-    word, pinyin: '', meaning: '', page: null, unsure: false, compare: null, other: '', splitFrom: '',
-    rows: settings.defaultRows,
+    word, pinyin: '', said: '', meaning: '', page: null, unsure: false, compare: null, other: '', depth: 0,
+    splitFrom: '', again: false, rows: settings.defaultRows,
   });
   $('add-word').value = '';
   listChanged();
@@ -639,15 +714,17 @@ function lines(text) {
 }
 
 async function loadData() {
-  const [commonText, fontText, prompt, pinyinPromptFile] = await Promise.all([
+  const [commonText, fontText, prompt, sentencePrompt, pinyinPromptFile] = await Promise.all([
     loadText('data/common3500.txt'),
     loadText('data/font-chars.txt'),
     loadText('prompts/worksheet.txt'),
+    loadText('prompts/sentences.txt'),
     loadText('prompts/pinyin-meaning.txt'),
   ]);
   common = new Set(lines(commonText));
   fontChars = new Set(lines(fontText));
   promptText = prompt;
+  sentencePromptText = sentencePrompt;
   pinyinPromptText = pinyinPromptFile;
 }
 
@@ -662,7 +739,8 @@ function wireUp() {
     event.target.value = '';      // so the same file can be opened again
     if (file) openFile(file);
   });
-  $('copy-prompt').addEventListener('click', copyPrompt);
+  $('copy-prompt').addEventListener('click', () => copyPrompt(promptText));
+  $('copy-sentence-prompt').addEventListener('click', () => copyPrompt(sentencePromptText));
   $('select-prompt').addEventListener('click', () => {
     $('prompt-text').focus();
     $('prompt-text').select();

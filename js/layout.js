@@ -3,6 +3,15 @@
 // Everything here is in PDF points, measured from the BOTTOM-left corner of the page
 // (the same as reportlab and pdf-lib).
 
+import { isSentence, PUNCTUATION } from './extract.js';
+
+// The font of a character in the KaiTi row. Punctuation comes from the print font: its marks
+// sit where mainland China writes them (。and ， in the bottom-left corner of the box); the
+// KaiTi font puts them in the middle.
+export function kaiRowFont(ch) {
+  return PUNCTUATION.includes(ch) ? 'print' : 'kai';
+}
+
 export const MM = 72 / 25.4;
 export const PAGE_WIDTH = 210 * MM;   // A4
 export const PAGE_HEIGHT = 297 * MM;
@@ -47,9 +56,21 @@ function fromTop(mm) {
   return PAGE_HEIGHT - mm * MM;
 }
 
-// How many empty rows a word gets on this box size. rows is a number or "Page".
-export function emptyRows(rows, boxSize) {
-  const max = SIZES[boxSize].maxRows;
+// How many lines of model characters a word needs: a KaiTi row and a print row for every
+// `columns` characters. A long sentence carries on to the next line.
+export function modelLines(word, boxSize) {
+  return Math.max(1, Math.ceil([...word].length / SIZES[boxSize].columns));
+}
+
+// True when a word or sentence does not fit on one page, even with no empty rows.
+export function tooLongForPage(word, boxSize) {
+  return 2 * modelLines(word, boxSize) > SIZES[boxSize].maxRows + 2;
+}
+
+// How many empty rows a word gets on this box size. rows is a number or "Page" (the rest of
+// the page); a word with more model lines has fewer rows left on a page.
+export function emptyRows(rows, boxSize, lines = 1) {
+  const max = SIZES[boxSize].maxRows - 2 * (lines - 1);
   if (rows === 'Page') return max;
   const n = Math.floor(Number(rows));
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -57,11 +78,18 @@ export function emptyRows(rows, boxSize) {
 }
 
 // The text of a large-box label: "word   pinyin   - meaning", leaving out unknown parts.
+// A sentence is already in the boxes under it, so its label is only "pinyin   - meaning".
 export function labelText(item) {
-  let text = item.word;
-  if (item.pinyin) text += '   ' + item.pinyin;
-  if (item.meaning) text += '   - ' + item.meaning;
-  return text;
+  const parts = isSentence(item.word) ? [] : [item.word];
+  if (item.pinyin) parts.push(item.pinyin);
+  if (item.meaning) parts.push('- ' + item.meaning);
+  return parts.join('   ');
+}
+
+// The rows of one block: model lines (KaiTi + print each) and the empty rows.
+function blockRows(item, boxSize) {
+  const lines = modelLines(item.word, boxSize);
+  return 2 * lines + emptyRows(item.rows, boxSize, lines);
 }
 
 function newPage() {
@@ -69,12 +97,14 @@ function newPage() {
   return { crosses: [], chars: [], grid: [], marks: [], texts: [] };
 }
 
-// Characters of one word, one per cell. [...word] keeps characters outside the BMP whole.
-function addModelRows(page, word, x0, rowTop, box) {
-  [...word].forEach((ch, col) => {
-    const cx = x0 + (col + 0.5) * box;
-    page.chars.push({ ch, font: 'kai', cx, cy: rowTop - box / 2 });
-    page.chars.push({ ch, font: 'print', cx, cy: rowTop - box - box / 2 });
+// Characters of one word, one per cell: a KaiTi row with the print row under it, and so on for
+// every `columns` characters. [...word] keeps characters outside the BMP whole.
+function addModelRows(page, word, x0, rowTop, box, columns) {
+  [...word].forEach((ch, i) => {
+    const cx = x0 + (i % columns + 0.5) * box;
+    const top = rowTop - 2 * Math.floor(i / columns) * box;
+    page.chars.push({ ch, font: kaiRowFont(ch), cx, cy: top - box / 2 });
+    page.chars.push({ ch, font: 'print', cx, cy: top - box - box / 2 });
   });
 }
 
@@ -94,7 +124,7 @@ function layoutSmall(items) {
   let page = 0;
   let row = 0;         // next free row on the current page
   for (const item of items) {
-    const rows = 2 + emptyRows(item.rows, 'small');
+    const rows = blockRows(item, 'small');
     if (row + rows > SMALL_ROWS_PER_PAGE) {
       page += 1;
       row = 0;
@@ -142,7 +172,7 @@ function layoutSmall(items) {
   for (const { item, page: p, row: r } of placed) {
     const out = pages[p];
     const top = gridTop - r * box;
-    addModelRows(out, item.word, x0, top, box);
+    addModelRows(out, item.word, x0, top, box, size.columns);
     out.marks.push({ x1: x0, y1: top, x2: gridRight, y2: top, kind: 'block' });
   }
   return { boxSize: 'small', style: size, pages, blocks: placed.map(b => ({ page: b.page, row: b.row, rows: b.rows })) };
@@ -165,7 +195,7 @@ function layoutLarge(items) {
   let lastBottom = null;   // mm from the top of the last grid on the current page
 
   for (const item of items) {
-    const rows = 2 + emptyRows(item.rows, 'large');
+    const rows = blockRows(item, 'large');
     let gridTopMm = lastBottom === null ? LARGE_FIRST_LABEL + LABEL_TO_GRID
       : lastBottom + GRID_TO_CUT + CUT_TO_LABEL + LABEL_TO_GRID;
     // Small tolerance so that 278.5 itself is allowed despite rounding.
@@ -180,10 +210,13 @@ function layoutLarge(items) {
     }
 
     const top = fromTop(gridTopMm);
-    out.texts.push({
-      text: labelText(item), font: 'print', size: LABEL_SIZE, color: '#000000', align: 'left',
-      x: x0, y: fromTop(gridTopMm - LABEL_TO_GRID), maxWidth: size.columns * box,
-    });
+    const label = labelText(item);
+    if (label) {
+      out.texts.push({
+        text: label, font: 'print', size: LABEL_SIZE, color: '#000000', align: 'left',
+        x: x0, y: fromTop(gridTopMm - LABEL_TO_GRID), maxWidth: size.columns * box,
+      });
+    }
     // Dashed centre cross in every cell (one short line each way, as in the sample).
     for (let r = 0; r < rows; r++) {
       const bottom = top - (r + 1) * box;
@@ -201,7 +234,7 @@ function layoutLarge(items) {
       const x = x0 + c * box;
       out.grid.push({ x1: x, y1: top, x2: x, y2: top - rows * box });
     }
-    addModelRows(out, item.word, x0, top, box);
+    addModelRows(out, item.word, x0, top, box, size.columns);
     blocks.push({ page: pages.length - 1, gridTopMm, rows });
     lastBottom = gridTopMm + rows * boxMm;
   }
@@ -213,12 +246,10 @@ function layoutLarge(items) {
 // crosses (dashed), chars (cell centres), grid (solid), marks (block/cut lines), texts.
 export function layoutSheet(items, boxSize = 'small') {
   if (!SIZES[boxSize]) throw new Error(`Unknown box size: ${boxSize}`);
-  const columns = SIZES[boxSize].columns;
   for (const item of items) {
-    const length = [...item.word].length;
-    if (length === 0) throw new Error('A word is empty.');
-    if (length > columns) {
-      throw new Error(`"${item.word}" has ${length} characters; this sheet has only ${columns} columns.`);
+    if ([...item.word].length === 0) throw new Error('A word is empty.');
+    if (tooLongForPage(item.word, boxSize)) {
+      throw new Error(`"${item.word}" is too long for one page.`);
     }
   }
   return boxSize === 'small' ? layoutSmall(items) : layoutLarge(items);

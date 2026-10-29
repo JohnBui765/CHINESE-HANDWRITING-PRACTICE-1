@@ -105,3 +105,32 @@ test('builds a practice PDF in every box size with both fonts embedded', { skip:
     }
   }
 });
+
+test('both fonts have the sentence punctuation, and the print font the arrow of "nǐ → ní"', async () => {
+  const fontkitModule = await import('../vendor/fontkit.esm.min.js');
+  const fontkit = fontkitModule.default ?? fontkitModule;
+  const { PUNCTUATION } = await import('../js/extract.js');
+  const kai = fontkit.create(fonts.kai);
+  const print = fontkit.create(fonts.print);
+  for (const ch of PUNCTUATION) {
+    assert.ok(kai.hasGlyphForCodePoint(ch.codePointAt(0)), `KaiTi lacks ${ch}`);
+    assert.ok(print.hasGlyphForCodePoint(ch.codePointAt(0)), `print font lacks ${ch}`);
+  }
+  assert.ok(print.hasGlyphForCodePoint('→'.codePointAt(0)));
+});
+
+test('a sentence and an arrow end up in the PDF text, in both sheets', { skip: !HAVE_PYMUPDF && 'PyMuPDF not available' }, async () => {
+  const items = [
+    { word: '你好！我叫李小雨。我是中国人，我买一本书。', pinyin: 'Ní hǎo! Wǒ jiào Lǐ Xiáoyǔ.', meaning: 'Hello! My name is Li Xiaoyu.', rows: 1 },
+    { word: '你', pinyin: 'nǐ → ní', meaning: 'you', rows: 1 },
+  ];
+  for (const [name, layout] of [
+    ['sentence-large.pdf', layoutSheet(items, 'large')],
+    ['sentence-practice.pdf', layoutPractice(items, { box: 14, rounds: 1, seed: 3 })],
+  ]) {
+    const file = path.join(OUT, name);
+    fs.writeFileSync(file, await drawSheet(layout, fonts, 'Sentences'));
+    const text = check(file, '--json').text.join('');
+    for (const piece of ['！', '。', '，', 'nǐ → ní']) assert.ok(text.includes(piece), `${name}: ${piece}`);
+  }
+});

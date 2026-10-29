@@ -36,20 +36,32 @@ You need the internet only for this step.
 Choose one way to bring in words:
 
 - **Paste** any text and press **Read text**. Only Chinese words are kept; pinyin, Vietnamese,
-  English and numbers are thrown away. A lesson list can carry pinyin and meaning like this:
+  English and numbers are thrown away. A lesson list can carry pinyin and meaning, the
+  characters of a word (lines starting with `>`), and sentences, like this:
   ```
   # Bài 5
   女朋友 | nǚ péngyou | girlfriend
+  > 女 | nǚ | woman
+  > 朋 | péng | friend
+  > 友 | yǒu → you | friend
   哪 | nǎ | which
+  你好！ | Ní hǎo! | Hello!
   国
   ```
+  `yǒu → you` means: 友 is *yǒu* on its own, but said *you* in this word.
 - **Open file…**: a `.txt`, a Word `.docx`, or a PDF that contains real text.
 - **A worksheet that is only a picture** (a scanned PDF or a photo): the app cannot read
   pictures. Instead:
-  1. Press **Copy AI prompt**.
+  1. Press **Copy AI prompt: words + characters** (vocabulary: every word with its characters
+     under it) or **Copy AI prompt: sentences** (every sentence, with its pinyin as said, an
+     English translation, and its chunks under it).
   2. Open ChatGPT, Gemini or Claude, paste the prompt and attach the worksheet.
-  3. Copy the AI's whole reply, paste it into Hanzi Grid and press **Read text**.
-  4. Even better: ask a second AI too, and paste its reply into **Compare with a second AI's
+  3. Copy the AI's reply (the copy button of its code block is best), paste it into Hanzi Grid
+     and press **Read text**.
+  4. A long worksheet: if the AI's answer ends with `# continue from page N`, type *continue* in
+     the AI chat. Paste the next part at the end of the **same** box, under the first part, and
+     press **Read text** when the last part (ending with `# total`) is in.
+  5. Even better: ask a second AI too, and paste its reply into **Compare with a second AI's
      reply**. Words where the two disagree are marked.
 
 **Check every word.** You don't need to know Chinese for this: compare the **shapes**.
@@ -57,20 +69,25 @@ Choose one way to bring in words:
 - **Orange** = check this word: the AI was not sure, the two AIs disagree, the pinyin does not fit
   the number of characters, or a character is unusual (not among the 3,500 common characters).
 - **Red** = must be fixed before printing: a character the app's fonts don't have (often a
-  traditional character such as 國), or a word longer than one row.
+  traditional character such as 國), or a text too long for one page.
 - **Edit**, **↑ ↓**, **Merge ↓** (join with the next word) and **Delete** fix the list. Add a missing
-  word in the box under the list.
+  word in the box under the list. In **Edit**, a tone change is written with an arrow: `nǐ → ní`.
+- The lines under a word (its characters, or a sentence's chunks) are indented. A word moves and
+  is deleted together with them.
 - **Rows**: how many empty rows each word gets: **1**, **3**, **6**, **Page** (a whole page) or any
   number.
-- **Split** (on a word with two or more characters) turns it into single characters, to drill
-  each one. **Split all into characters** (under the list) does it for every word. Repeated
-  characters are removed (the first one stays, with the best pinyin and meaning of all its
-  copies). Each character gets its syllable from the word's pinyin, with an
-  orange note: tones can change inside a word (友 is *yǒu* on its own, but *you* in 朋友), and
-  the meaning is left empty. To fix both, press **Copy AI prompt: pinyin & meaning**, paste it
-  into an AI chat, then paste the AI's reply into the box at the top and press **Read text**:
-  it fills in your list instead of replacing it. It only fills what is missing (and the
-  syllables taken from a word); pinyin and meanings you typed yourself are kept.
+- **Split** (on a word with two or more characters) keeps the word and lists its characters
+  under it, so you practise both. **Unsplit** takes them away again. **Split all into
+  characters** (under the list) does it for every word. Each character gets its syllable from
+  the word's pinyin, with an orange note: tones can change inside a word (友 is *yǒu* on its
+  own, but *you* in 朋友). To get each character's own pinyin and meaning, press **Copy AI
+  prompt: pinyin & meaning**, paste it into an AI chat, then paste the AI's reply into the box
+  at the top and press **Read text**: it fills in your list instead of replacing it. It only
+  fills what is missing (and the syllables taken from a word); pinyin and meanings you typed
+  yourself are kept.
+- **Grey rows** are repeats: every word or character is printed only the first time it appears
+  (十 in 二十, 三十, 四十… is printed once). The grey rows stay so you can still read their
+  pinyin (一 is *yí* in 一个 but *yì* in 一百). **Print again** prints one anyway.
 - **Save list** saves the list as a `.txt` file (on iPhone: Save to Files). Open it again later
   with **Open file…**. The app also remembers the current list by itself, but files are safer.
 
@@ -79,6 +96,8 @@ Choose one way to bring in words:
 1. Choose the box size:
    - **Small boxes**: 10 mm, 18 per row, 26 rows per page, no pinyin.
    - **Large boxes**: 15 mm, 12 per row, a line above each word with its pinyin and meaning.
+   - A sentence longer than a row carries on in the next row; each punctuation mark gets its
+     own box, as on Chinese composition paper.
 2. Press **Make PDF**, wait for "Done", then press **Save PDF**.
    - Windows: the PDF goes to your **Downloads** folder.
    - iPhone: the Share sheet opens: **Save to Files**, **Print**, or AirDrop.
@@ -98,6 +117,8 @@ On tab 2, choose **Sheet type → Practice sheet** to get a test sheet instead o
 Choose the **box size** (14 mm like the original, or 12 / 10 mm to save paper) and the number of
 **rounds** (1–5). Every time you press **Make PDF** the mixed part comes out in a new order.
 Words without pinyin or meaning still print; tab 2 lists them so you can add them with **Edit**.
+A sentence (or a word too long for a row) gets a whole row: its boxes across the page, with the
+pinyin and translation under them.
 
 ---
 

@@ -5,171 +5,176 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  splitWord, splitEntries, removeRepeats, allInList, fillIn, pinyinPrompt,
-  isPinyinPromptExample, PINYIN_PROMPT_EXAMPLE,
+  splitEntries, canSplit, unsplit, deleteEntry, moveEntry, repeatFlags, printedEntries,
+  allInList, fillIn, pinyinPrompt, isPinyinPromptExample, PINYIN_PROMPT_EXAMPLE,
 } from '../js/listedit.js';
+import { readText } from '../js/extract.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const entry = (word, pinyin = '', meaning = '', more = {}) => ({
-  word, pinyin, meaning, page: null, unsure: false, compare: null, other: '', rows: 3, ...more,
+  word, pinyin, said: '', meaning, page: null, unsure: false, compare: null, other: '', depth: 0, rows: 3, ...more,
 });
-const words = list => list.map(e => e.word);
+// "女朋友", ">女", ... with the pinyin as said after an arrow: compact and easy to compare.
+const show = list => list.map(e => `${'>'.repeat(e.depth)}${e.word}${e.pinyin ? ' ' + e.pinyin : ''}${e.said ? '→' + e.said : ''}`);
 
-test('splitWord: one entry per character, pinyin from the word, no meaning', () => {
-  const parts = splitWord(entry('女朋友', 'nǚ péngyou', 'girlfriend', { rows: 6, page: 2, unsure: true }));
-  assert.deepEqual(words(parts), ['女', '朋', '友']);
-  assert.deepEqual(parts.map(p => p.pinyin), ['nǚ', 'péng', 'you']);
-  assert.ok(parts.every(p => p.meaning === '' && p.splitFrom === '女朋友'));
-  assert.ok(parts.every(p => p.rows === 6 && p.page === 2 && p.unsure === true));
-});
-
-test('splitWord: pinyin that cannot be split is left empty; one character stays as it is', () => {
-  const parts = splitWord(entry('你好', 'hǎo', 'hello'));
-  assert.deepEqual(parts.map(p => p.pinyin), ['', '']);
-  assert.ok(parts.every(p => p.splitFrom === '你好'));
-  const one = entry('国', 'guó', 'country');
-  assert.deepEqual(splitWord(one), [one]);
-});
-
-test('splitEntries: one word, in its place', () => {
-  const list = [entry('哪', 'nǎ'), entry('女朋友', 'nǚ péngyou'), entry('国', 'guó')];
+test('Split keeps the word and puts its characters under it, with the pinyin of the word', () => {
+  const list = [entry('哪', 'nǎ'), entry('女朋友', 'nǚ péngyou', 'girlfriend', { rows: 6 }), entry('国', 'guó')];
   const result = splitEntries(list, 1);
-  assert.deepEqual(words(result.entries), ['哪', '女', '朋', '友', '国']);
   assert.equal(result.split, 1);
-  assert.equal(result.removed, 0);
+  assert.deepEqual(show(result.entries), ['哪 nǎ', '女朋友 nǚ péngyou', '>女 nǚ', '>朋 péng', '>友 you', '国 guó']);
+  const parts = result.entries.slice(2, 5);
+  assert.ok(parts.every(p => p.splitFrom === '女朋友' && p.meaning === '' && p.rows === 6 && p.depth === 1));
+  // The word itself is unchanged.
+  assert.equal(result.entries[1], list[1]);
 });
 
-test('splitEntries: all words, repeats removed, first place kept', () => {
-  const list = [
-    entry('姐姐', 'jiějie', 'older sister'),
-    entry('中国', 'Zhōngguó', 'China'),
-    entry('国', 'guó', 'country'),     // already in the list on its own
-    entry('想', 'xiǎng', 'to want'),
-  ];
+test('Split uses what the list already knows about a character', () => {
+  const list = [entry('中国', 'Zhōngguó', 'China'), entry('朋友', 'péngyou'), entry('国', 'guó', 'country'), entry('友', 'yǒu', 'friend')];
   const result = splitEntries(list);
-  assert.deepEqual(words(result.entries), ['姐', '中', '国', '想']);
-  assert.equal(result.split, 2);
-  assert.equal(result.removed, 2);       // the second 姐, and the separate 国
-  // 国 keeps its place (from 中国) but takes the pinyin and meaning of the separate entry.
-  const guo = result.entries[2];
-  assert.equal(guo.pinyin, 'guó');
-  assert.equal(guo.meaning, 'country');
-  assert.equal(guo.splitFrom, '');
-  // The others still say where their pinyin came from.
-  assert.equal(result.entries[0].splitFrom, '姐姐');
+  // 国: the same syllable as the separate 国 row, so its pinyin and meaning are checked.
+  const guo = result.entries.find(e => e.word === '国' && e.depth === 1);
+  assert.deepEqual([guo.pinyin, guo.said, guo.meaning, guo.splitFrom], ['guó', '', 'country', '']);
+  // 友: "you" in 朋友, yǒu on its own -> yǒu → you.
+  const you = result.entries.find(e => e.word === '友' && e.depth === 1);
+  assert.deepEqual([you.pinyin, you.said, you.meaning, you.splitFrom], ['yǒu', 'you', 'friend', '']);
+  // 中: nothing known, so the warning stays.
   assert.equal(result.entries[1].splitFrom, '中国');
 });
 
-test('splitEntries: a character that comes earlier in the list stays where it is', () => {
-  const result = splitEntries([entry('国', 'guó', 'country'), entry('中国', 'Zhōngguó', 'China')]);
-  assert.deepEqual(words(result.entries), ['国', '中']);
-  assert.equal(result.entries[0].splitFrom, undefined);
-  assert.equal(result.removed, 1);
+test('Split: pinyin that does not fit gives empty pinyin; one character cannot be split', () => {
+  const result = splitEntries([entry('你好', 'hǎo', 'hello'), entry('国', 'guó')]);
+  assert.deepEqual(show(result.entries), ['你好 hǎo', '>你', '>好', '国 guó']);
+  assert.ok(result.entries.slice(1, 3).every(p => p.splitFrom === '你好'));
+  assert.equal(canSplit(result.entries, 3), false);
+  // A word that already has its parts cannot be split again.
+  assert.equal(canSplit(result.entries, 0), false);
 });
 
-test('removeRepeats fills an empty pinyin or meaning from a repeat', () => {
-  const result = removeRepeats([entry('友', '', '', { splitFrom: '朋友' }), entry('友', 'yǒu', 'friend')]);
-  assert.equal(result.entries.length, 1);
-  assert.equal(result.entries[0].pinyin, 'yǒu');
-  assert.equal(result.entries[0].meaning, 'friend');
-  assert.equal(result.entries[0].splitFrom, '');
+test('Split of a sentence: one part per character, no punctuation; the pinyin as said is split too', () => {
+  const sentence = entry('你好！', 'nǐ hǎo', 'Hello!', { said: 'ní hǎo' });
+  const result = splitEntries([sentence], 0);
+  assert.deepEqual(show(result.entries), ['你好！ nǐ hǎo→ní hǎo', '>你 nǐ→ní', '>好 hǎo']);
 });
 
-test('allInList and fillIn: a reply about the list fills in pinyin and meaning, keeps the rest', () => {
-  const list = [
-    { ...entry('女', 'nǚ', ''), splitFrom: '女朋友', rows: 6 },
-    { ...entry('友', 'you', ''), splitFrom: '女朋友', rows: 'Page' },
-    entry('国', 'guó', 'country'),
-  ];
-  const reply = [entry('友', 'yǒu', 'friend'), entry('女', 'nǚ', 'woman')];
-  assert.equal(allInList(list, reply), true);
-  assert.equal(allInList(list, [entry('山', 'shān', 'mountain')]), false);
-  assert.equal(allInList(list, []), false);
-  const result = fillIn(list, reply);
-  assert.equal(result.updated, 2);
-  assert.deepEqual(words(result.entries), ['女', '友', '国']);
-  assert.equal(result.entries[1].pinyin, 'yǒu');
-  assert.equal(result.entries[1].meaning, 'friend');
-  assert.equal(result.entries[1].splitFrom, '');
-  assert.equal(result.entries[1].rows, 'Page');
-  assert.equal(result.entries[2].meaning, 'country');
+test('Split all: words and chunks without parts; not repeats, not characters of chunks', () => {
+  const list = readText([
+    '1 | 我买一本书。 | Wó mǎi yì běn shū. | I buy a book.',
+    '> 我 | wǒ → wó | I', '> 买 | mǎi | to buy', '> 一本书 | yì běn shū | a book',
+    '1 | 一本书 | yì běn shū | a book',
+    '1 | 中国 | Zhōngguó | China',
+  ].join('\n')).entries;
+  const result = splitEntries(list);
+  assert.equal(result.split, 2);   // the chunk 一本书 and 中国; the repeated 一本书 is not split
+  assert.deepEqual(show(result.entries), [
+    '我买一本书。 Wó mǎi yì běn shū.', '>我 wǒ→wó', '>买 mǎi', '>一本书 yì běn shū', '>>一 yì', '>>本 běn', '>>书 shū',
+    '一本书 yì běn shū', '中国 Zhōngguó', '>中 zhōng', '>国 guó',
+  ]);
+  assert.equal(splitEntries(result.entries).split, 0);
 });
 
-test('pinyinPrompt asks only about words that need it', () => {
-  const list = [
-    entry('国', 'guó', 'country'),
-    entry('哪', 'nǎ', ''),
-    { ...entry('友', 'you', ''), splitFrom: '朋友' },
-    entry('她', '', 'she'),
-  ];
-  assert.equal(pinyinPrompt('PROMPT\n', list), 'PROMPT\n哪\n友\n她\n');
+test('repeats are printed once: the first time a word appears, unless "Print again"', () => {
+  const list = readText('1 | 二十 | èrshí\n> 二 | èr\n> 十 | shí\n1 | 十一 | shíyī\n> 十 | shí\n> 一 | yī\n1 | 十 | shí | ten').entries;
+  assert.deepEqual(repeatFlags(list), [false, false, false, false, true, false, true]);
+  assert.deepEqual(printedEntries(list).map(e => e.word), ['二十', '二', '十', '十一', '一']);
+  list[6].again = true;
+  assert.deepEqual(printedEntries(list).map(e => e.word), ['二十', '二', '十', '十一', '一', '十']);
+});
+
+test('Unsplit, Delete and the move buttons keep a word and its parts together', () => {
+  const list = readText('1 | 你好 | nǐ hǎo\n> 你 | nǐ\n> 好 | hǎo\n1 | 他 | tā\n1 | 老师 | lǎoshī\n> 老 | lǎo\n> 师 | shī').entries;
+  assert.deepEqual(show(unsplit(list, 0)).map(s => s.split(' ')[0]), ['你好', '他', '老师', '>老', '>师']);
+  assert.deepEqual(show(deleteEntry(list, 0)).map(s => s.split(' ')[0]), ['他', '老师', '>老', '>师']);
+  assert.deepEqual(show(moveEntry(list, 3, -1)).map(s => s.split(' ')[0]), ['他', '你好', '>你', '>好', '老师', '>老', '>师']);
+  assert.deepEqual(show(moveEntry(list, 0, 1)).map(s => s.split(' ')[0]), ['他', '你好', '>你', '>好', '老师', '>老', '>师']);
+  assert.deepEqual(show(moveEntry(list, 3, 1)).map(s => s.split(' ')[0]), ['你好', '>你', '>好', '老师', '>老', '>师', '他']);
+  assert.equal(moveEntry(list, 0, -1), list);
+  assert.equal(moveEntry(list, 4, 1), list);
+});
+
+test('the pinyin prompt lists what needs help; a word whose parts need help comes with all its parts', () => {
+  const list = splitEntries([
+    entry('国', 'guó', 'country'), entry('哪', 'nǎ'), entry('朋友', 'péngyou', 'friend'), entry('她', '', 'she'),
+  ]).entries;
+  assert.equal(pinyinPrompt('PROMPT\n', list), 'PROMPT\n哪\n朋友\n> 朋\n> 友\n她\n');
   assert.equal(pinyinPrompt('PROMPT', [entry('国', 'guó', 'country')]), '');
+});
+
+test('the reply to the pinyin prompt fills in each part place by place, and never overwrites', () => {
+  const list = splitEntries([entry('朋友', 'péngyou', 'friend'), entry('哪', 'nǎ', 'which'), entry('有', 'yǒu')]).entries;
+  const reply = readText('```\n朋友 | péngyou | friend\n> 朋 | péng | friend\n> 友 | yǒu → you | friend\n' +
+    '哪 | nǎr | where\n有 | yǒu | to have\n山 | shān | mountain\n```').entries;
+  assert.equal(allInList(list, reply), true);
+  const result = fillIn(list, reply);
+  assert.deepEqual(show(result.entries), ['朋友 péngyou', '>朋 péng', '>友 yǒu→you', '哪 nǎ', '有 yǒu']);
+  assert.deepEqual(result.entries.map(e => e.meaning), ['friend', 'friend', 'friend', 'which', 'to have']);
+  assert.ok(result.entries.every(e => !e.splitFrom));
+  assert.equal(result.updated, 3);   // 朋, 友 and 有's meaning; 哪 keeps its own pinyin
+  assert.equal(fillIn(result.entries, reply).updated, 0);
+});
+
+test('a flat reply (no "> " lines) fills in parts by their character', () => {
+  const list = splitEntries([entry('女朋友', 'nǚ péngyou', 'girlfriend')]).entries;
+  const reply = readText('女 | nǚ | woman\n朋 | péng | friend\n友 | yǒu | friend').entries;
+  assert.equal(allInList(list, reply), true);
+  const result = fillIn(list, reply);
+  assert.equal(result.updated, 3);
+  assert.deepEqual(result.entries.slice(1).map(e => `${e.word} ${e.pinyin} ${e.meaning}`), ['女 nǚ woman', '朋 péng friend', '友 yǒu friend']);
+});
+
+test('only useful lines decide between filling in and a new list', () => {
+  const list = [entry('女', 'nǚ'), entry('国', 'guó', 'country')];
+  assert.equal(allInList(list, readText('女 | nǚ | woman\n山 | shān | mountain\n朋友').entries), true);
+  assert.equal(allInList(list, readText('女 | nǚ | woman\n她 | tā | she').entries), false);
+  assert.equal(allInList(list, readText('女\n国').entries), false);
+  assert.equal(allInList(list, []), false);
 });
 
 test('the pinyin prompt file uses the example the app knows, with characters not in the samples', () => {
   const prompt = fs.readFileSync(path.join(ROOT, 'prompts', 'pinyin-meaning.txt'), 'utf-8');
-  for (const ch of PINYIN_PROMPT_EXAMPLE) assert.ok(prompt.includes(`\n${ch} |`), ch);
-  const sampleWords = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'sample_key.txt'), 'utf-8');
-  for (const ch of PINYIN_PROMPT_EXAMPLE) assert.ok(!sampleWords.includes(ch), ch);
+  const example = readText(prompt.slice(prompt.indexOf('FORMAT EXAMPLE')).split('\n').slice(1).join('\n')).entries;
+  assert.deepEqual(example.map(e => e.word), PINYIN_PROMPT_EXAMPLE);
+  const key = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'sample_key.txt'), 'utf-8');
+  for (const word of PINYIN_PROMPT_EXAMPLE) assert.ok(![...word].some(ch => key.includes(ch)), word);
   assert.ok(prompt.trimEnd().endsWith('THE LIST:'));
 });
 
-test('isPinyinPromptExample: a reply with only the example characters', () => {
+test('isPinyinPromptExample: a reply with only the example lines', () => {
   const list = [entry('女')];
-  assert.equal(isPinyinPromptExample([entry('山', 'shān', 'mountain'), entry('水', 'shuǐ', 'water')], list), true);
+  const echo = readText('山 | shān | mountain\n水果 | shuǐguǒ | fruit\n> 水 | shuǐ → shuí | water\n> 果 | guǒ | fruit').entries;
+  assert.equal(isPinyinPromptExample(echo, list), true);
+  assert.equal(isPinyinPromptExample(echo, []), false);   // nothing to fill in: read it as a list
   assert.equal(isPinyinPromptExample([entry('女', 'nǚ', 'woman')], list), false);
   assert.equal(isPinyinPromptExample([entry('山', 'shān', 'mountain')], [entry('山')]), false);
 });
 
-// Found by the independent review (each one was wrong before the fix).
-test('removing repeats keeps the AI warnings of the repeat', () => {
-  const result = splitEntries([
-    entry('中国', 'Zhōngguó', 'China'),
-    entry('国', 'guó', 'country', { unsure: true, compare: 'differs', other: '图' }),
-  ]);
-  const guo = result.entries[1];
-  assert.equal(guo.word, '国');
-  assert.equal(guo.unsure, true);
-  assert.equal(guo.compare, 'differs');
-  assert.equal(guo.other, '图');
+// Found by the independent review of the parts change (each one was wrong before the fix).
+test('Split takes a known meaning only for the same reading (行 háng in 银行 is not 行 xíng)', () => {
+  const result = splitEntries([entry('银行', 'yínháng', 'bank'), entry('行', 'xíng', 'OK; to walk')], 0);
+  const hang = result.entries[2];
+  assert.deepEqual([hang.word, hang.pinyin, hang.meaning, hang.splitFrom], ['行', 'háng', '', '银行']);
 });
 
-test('pinyin taken from a word keeps its warning when it moves to an earlier repeat', () => {
-  const result = splitEntries([entry('友'), entry('朋友', 'péngyou', 'friend')]);
-  assert.deepEqual(words(result.entries), ['友', '朋']);
-  assert.equal(result.entries[0].pinyin, 'you');
-  assert.equal(result.entries[0].splitFrom, '朋友');
-  assert.ok(pinyinPrompt('P', result.entries).includes('\n友\n'));
+test('filling in keeps the AI\'s "not sure" flag', () => {
+  const list = splitEntries([entry('小雨', 'xiǎoyǔ', 'light rain')]).entries;
+  const reply = readText('小雨 | xiǎoyǔ | light rain\n> 小 | xiǎo → xiáo | small ?\n> 雨 | yǔ | rain').entries;
+  const result = fillIn(list, reply);
+  assert.equal(result.entries[1].unsure, true);
+  assert.equal(result.entries[2].unsure, false);
 });
 
-test('splitting one word leaves unrelated repeats in the list alone', () => {
-  const list = [entry('国', 'guó', '', { rows: 3 }), entry('国', 'guó', '', { rows: 6 }), entry('中文', 'Zhōngwén')];
-  const result = splitEntries(list, 2);
-  assert.deepEqual(words(result.entries), ['国', '国', '中', '文']);
-  assert.deepEqual(result.entries.map(e => e.rows), [3, 6, 3, 3]);
-  assert.equal(result.removed, 0);
-});
-
-test('a reply with the example lines or remarks still fills in the list', () => {
-  const list = [{ ...entry('女', 'nǚ'), splitFrom: '女朋友' }, entry('国', 'guó', 'country')];
-  const reply = [entry('女', 'nǚ', 'woman'), entry('山', 'shān', 'mountain'), entry('朋友')];
+test('a word of the list that is also in the prompt\'s example is filled in like any other', () => {
+  const list = splitEntries([entry('水果', 'shuǐguǒ'), entry('苹果', 'píngguǒ')]).entries;
+  const reply = readText('水果 | shuǐguǒ | fruit\n> 水 | shuǐ → shuí | water\n> 果 | guǒ | fruit').entries;
   assert.equal(allInList(list, reply), true);
   const result = fillIn(list, reply);
-  assert.equal(result.updated, 1);
-  assert.equal(result.entries[0].meaning, 'woman');
-  assert.equal(result.entries[0].splitFrom, '');
+  assert.deepEqual(result.entries.slice(0, 3).map(e => `${e.word} ${e.pinyin}${e.said ? '→' + e.said : ''} ${e.meaning}`),
+    ['水果 shuǐguǒ fruit', '水 shuǐ→shuí water', '果 guǒ fruit']);
 });
 
-test('filling in never overwrites pinyin or a meaning the list already has', () => {
-  const list = [entry('女朋友', 'nǚ péng you', 'girlfriend')];
-  const result = fillIn(list, [entry('女朋友', 'nǚpéngyǒu', 'girl friend')]);
-  assert.equal(result.updated, 0);
-  assert.equal(result.entries[0].pinyin, 'nǚ péng you');
-  assert.equal(result.entries[0].meaning, 'girlfriend');
-});
-
-test('pasting the example characters into an empty app is not refused', () => {
-  assert.equal(isPinyinPromptExample([entry('山', 'shān', 'mountain')], []), false);
-  assert.equal(isPinyinPromptExample([entry('山')], [entry('女')]), false);
-  assert.equal(isPinyinPromptExample([entry('山', 'shān', 'mountain')], [entry('女')]), true);
+test('a reply without ">" marks still fills each character with its own word\'s reading', () => {
+  const list = splitEntries([entry('一个', 'yí ge', 'one'), entry('一百', 'yìbǎi', 'one hundred')]).entries;
+  const reply = readText('一个 | yí ge | one\n一 | yī → yí | one\n个 | gè → ge | (measure word)\n' +
+    '一百 | yìbǎi | one hundred\n一 | yī → yì | one\n百 | bǎi | hundred').entries;
+  const result = fillIn(list, reply);
+  assert.deepEqual(show(result.entries), ['一个 yí ge', '>一 yī→yí', '>个 gè→ge', '一百 yìbǎi', '>一 yī→yì', '>百 bǎi']);
 });

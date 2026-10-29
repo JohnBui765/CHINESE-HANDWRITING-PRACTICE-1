@@ -149,6 +149,15 @@ button:disabled { opacity: 0.5; cursor: default; }
 .word .info { color: var(--muted); }
 .word .info b { color: var(--text); font-weight: 600; }
 
+/* Parts ("> " lines): the characters of a word, the chunks of a sentence, indented under it. */
+.word.part { margin-left: 14px; padding-left: 12px; border-left: 3px solid var(--line); }
+.word.depth-2 { margin-left: 28px; }
+.word.part .kai { font-size: 40px; }
+.word.part .print { font-size: 28px; }
+/* Repeats: shown so their pinyin can be read, but not printed. */
+.word.repeat { opacity: 0.55; }
+.word.repeat .hint { margin: 0; }
+
 .flags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .flags li { border-radius: 6px; padding: 2px 8px; font-size: 0.9rem; }
 .flags .warn { background: var(--warn-bg); color: var(--warn); }

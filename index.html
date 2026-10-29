@@ -27,7 +27,7 @@
       <div class="card">
         <h2>Add words</h2>
         <label for="paste">Paste an AI reply, a lesson list or any text</label>
-        <textarea id="paste" rows="6" placeholder="# Bài 5&#10;女朋友 | nǚ péngyou | girlfriend&#10;哪"></textarea>
+        <textarea id="paste" rows="6" placeholder="# Bài 5&#10;女朋友 | nǚ péngyou | girlfriend&#10;> 友 | yǒu → you | friend&#10;哪"></textarea>
         <details id="second">
           <summary>Compare with a second AI's reply</summary>
           <label for="paste2">Paste the second AI's reply here</label>
@@ -36,7 +36,8 @@
         <div class="buttons">
           <button type="button" id="read-paste" class="primary">Read text</button>
           <button type="button" id="open-file">Open file…</button>
-          <button type="button" id="copy-prompt">Copy AI prompt</button>
+          <button type="button" id="copy-prompt">Copy AI prompt: words + characters</button>
+          <button type="button" id="copy-sentence-prompt">Copy AI prompt: sentences</button>
         </div>
         <input id="file-input" type="file" hidden
           accept=".txt,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*">

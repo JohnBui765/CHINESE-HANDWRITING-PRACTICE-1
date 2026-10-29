@@ -12,6 +12,9 @@ import {
   countSyllables,
   toLessonText,
   safeFileName,
+  boxText,
+  splitArrow,
+  PROMPT_EXAMPLES,
 } from '../js/extract.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -69,6 +72,8 @@ describe('plain text', () => {
       lines: 0,
       total: null,
       echoedExample: false,
+      continueFrom: null,
+      nothing: '',
     });
   });
 });
@@ -175,11 +180,13 @@ describe('AI reply', () => {
     assert.deepEqual(result.entries[0], {
       word: '女朋友',
       pinyin: 'nǚ péng you',
+      said: '',
       meaning: 'girlfriend',
       page: 1,
       unsure: false,
       compare: null,
       other: '',
+      depth: 0,
     });
     assert.deepEqual(
       result.entries.map(e => [e.word, e.page, e.unsure, e.meaning]),
@@ -339,34 +346,133 @@ describe('AI reply', () => {
 });
 
 describe('echoed format example', () => {
-  const promptPath = path.join(ROOT, 'prompts', 'worksheet.txt');
+  const prompts = ['worksheet.txt', 'sentences.txt'].map(name => path.join(ROOT, 'prompts', name));
 
-  test('the whole prompt pasted back is detected', () => {
-    const result = readText(fs.readFileSync(promptPath, 'utf8'));
-    assert.equal(result.isReply, true);
-    assert.equal(result.echoedExample, true);
-    // This also checks that EXAMPLE_WORDS in extract.js matches the prompt's example.
-    assert.deepEqual(words(result), ['学生', '他', '老师']);
+  test('each whole prompt pasted back is detected, and reads as exactly its example', () => {
+    prompts.forEach((promptPath, i) => {
+      const result = readText(fs.readFileSync(promptPath, 'utf8'));
+      assert.equal(result.isReply, true);
+      assert.equal(result.echoedExample, true);
+      // No line of the rules is read as a word, and PROMPT_EXAMPLES matches the prompt.
+      assert.deepEqual(result.entries.filter(e => e.depth === 0).map(e => e.word), PROMPT_EXAMPLES[i]);
+    });
   });
 
   test('the example block alone is detected', () => {
-    const text = '```\n# Bài 9\n1 | 学生 | xué sheng | student\n1 | 他 | tā | he\n2 | 老师 | lǎo shī | teacher ?\n# total: 3\n```';
-    assert.equal(readText(text).echoedExample, true);
+    for (const promptPath of prompts) {
+      const prompt = fs.readFileSync(promptPath, 'utf8');
+      const block = prompt.slice(prompt.indexOf('FORMAT EXAMPLE'));
+      const text = '```\n' + block.split('\n').slice(1).join('\n') + '```';
+      assert.equal(readText(text).echoedExample, true, promptPath);
+    }
+  });
+
+  test('the pinyin prompt pasted back is detected too', () => {
+    const prompt = fs.readFileSync(path.join(ROOT, 'prompts', 'pinyin-meaning.txt'), 'utf8');
+    assert.equal(readText(prompt).echoedExample, true);
+    // ...but a fenced reply pasted together with the prompt is read normally.
+    const both = prompt + '\n```\n女 | nǚ | woman\n```\n';
+    assert.equal(readText(both).echoedExample, false);
+    assert.deepEqual(words(readText(both)), ['女']);
   });
 
   test('a real reply is not flagged', () => {
     assert.equal(readText('1 | 女朋友\n1 | 他').echoedExample, false);
-    assert.equal(readText('学生 他 老师').echoedExample, false); // plain text is never a reply
+    assert.equal(readText('他 你好 老师').echoedExample, false); // plain text is never a reply
   });
 
   test('the example words are in neither sample', () => {
     const key = readFixture('sample_key.txt');
-    for (const word of ['学生', '他', '老师']) {
-      assert.equal(key.includes(word), false, word);
-      for (const sampleWord of ['女朋友', '哪', '国', '她', '喂', '姐姐', '工作', '还', '忙', '吗']) {
-        assert.equal(sampleWord.includes(word), false, word);
+    for (const word of PROMPT_EXAMPLES.flat()) {
+      for (const ch of word.replace(/[^\u4E00-\u9FFF]/g, '')) {
+        assert.equal(key.includes(ch), false, ch);
+        for (const sampleWord of ['女朋友', '哪', '国', '她', '喂', '姐姐', '工作', '还', '忙', '吗']) {
+          assert.equal(sampleWord.includes(ch), false, ch);
+        }
       }
     }
+  });
+});
+
+describe('parts ("> " lines), sentences and the special "#" lines', () => {
+  const show = result => result.entries.map(e =>
+    `${'>'.repeat(e.depth)}${e.word}|${e.pinyin}${e.said ? '→' + e.said : ''}|${e.meaning}${e.unsure ? ' ?' : ''}`);
+
+  test('a word with its characters: dictionary pinyin → pinyin as said, "?" flags', () => {
+    const result = readText([
+      '```', '# Bài 9',
+      '1 | 你好 | nǐ hǎo | hello', '> 你 | nǐ → ní | you', '> 好 | hǎo | good',
+      '1 | 不客气 | bù kèqi | you\'re welcome', '> 不 | bù -> bú | not', '> 客 | kè | guest ?', '> 气 | qì => qi',
+      '2 | 他 | tā | he', '# total: 3', '```',
+    ].join('\n'));
+    assert.deepEqual(show(result), [
+      '你好|nǐ hǎo|hello', '>你|nǐ→ní|you', '>好|hǎo|good',
+      '不客气|bù kèqi|you\'re welcome', '>不|bù→bú|not', '>客|kè|guest ?', '>气|qì→qi|',
+      '他|tā|he',
+    ]);
+    // "# total" counts the word lines only, and parts have no page.
+    assert.equal(result.lines, 3);
+    assert.equal(result.total, 3);
+    assert.equal(result.entries[1].page, null);
+  });
+
+  test('a sentence keeps its punctuation, one box each; its chunks are parts', () => {
+    const result = readText('2 | 你好！我叫李小雨。 | Nǐ hǎo! Wǒ jiào Lǐ Xiáoyǔ. | Hello! I am Li Xiaoyu.\n' +
+      '> 你好 | nǐ hǎo → ní hǎo | hello\n> 我 | wǒ | I\n> 叫 | jiào | to be called\n> 李小雨 | Lǐ Xiǎoyǔ | Li Xiaoyu (name)');
+    assert.deepEqual(result.entries.map(e => e.word), ['你好！我叫李小雨。', '你好', '我', '叫', '李小雨']);
+    assert.equal(result.entries[0].pinyin, 'Nǐ hǎo! Wǒ jiào Lǐ Xiáoyǔ.');
+    assert.equal(result.entries[1].said, 'ní hǎo');
+  });
+
+  test('"> " lines whose ">" got lost are recognised by their spelling', () => {
+    const result = readText('1 | 朋友 | péngyou | friend\n朋 | péng | friend\n友 | yǒu → you | friend\n国 | guó | country');
+    assert.deepEqual(show(result), ['朋友|péngyou|friend', '>朋|péng|friend', '>友|yǒu→you|friend', '国|guó|country']);
+  });
+
+  test('a repeated word is removed with its characters', () => {
+    const result = readText('1 | 姐姐 | jiějie\n> 姐 | jiě\n> 姐 | jiě → jie\n2 | 姐姐 | jiějie\n> 姐 | jiě\n> 姐 | jiě → jie');
+    assert.equal(result.entries.length, 3);
+    assert.equal(result.removed, 1);
+    assert.equal(result.lines, 2);
+  });
+
+  test('"# continue from page N" and "# nothing to copy" are not list names', () => {
+    const part = readText('# Bài 3\n1 | 他 | tā\n# continue from page 2');
+    assert.equal(part.continueFrom, 2);
+    assert.equal(part.name, 'Bài 3');
+    // Both parts pasted together, the last one ending with "# total": finished.
+    const whole = readText('# Bài 3\n1 | 他 | tā\n# continue from page 2\n```\n# Bài 3\n2 | 老师 | lǎoshī\n# total: 2\n```');
+    assert.equal(whole.continueFrom, null);
+    assert.deepEqual(words(whole), ['他', '老师']);
+    assert.equal(whole.total, whole.lines);
+    const nothing = readText('```\n# nothing to copy: the pages are photos of a cat\n```');
+    assert.equal(nothing.nothing, 'the pages are photos of a cat');
+    assert.equal(nothing.name, 'Untitled');
+  });
+
+  test('saved lists keep parts, arrows and sentences', () => {
+    const entries = readText('1 | 我买一本书。 | Wó mǎi yì běn shū. | I buy a book.\n> 我 | wǒ → wó | I\n> 一本书 | yì běn shū\n>> 一 | yī → yì\n2 | 你好！').entries;
+    const text = toLessonText('Bài 2', entries);
+    assert.equal(text, '# Bài 2\n我买一本书。 | Wó mǎi yì běn shū. | I buy a book.\n> 我 | wǒ → wó | I\n' +
+      '> 一本书 | yì běn shū\n>> 一 | yī → yì\n你好！ |\n');
+    assert.deepEqual(show(readText(text)), show({ entries }));
+  });
+
+  test('boxText and splitArrow', () => {
+    assert.equal(boxText('你好! 我叫 李 小雨. 你呢?'), '你好！我叫李小雨。你呢？');
+    assert.equal(boxText('，女朋友 (girlfriend)：'), '女朋友');
+    assert.equal(boxText('他说……'), '他说……');
+    assert.equal(boxText('hello'), '');
+    assert.deepEqual(splitArrow('nǐ → ní'), { pinyin: 'nǐ', said: 'ní' });
+    assert.deepEqual(splitArrow('nǐ'), { pinyin: 'nǐ', said: '' });
+  });
+
+  test('compareReplies keeps each word\'s parts with it', () => {
+    const a = readText('1 | 你好 | nǐ hǎo\n> 你 | nǐ → ní\n> 好 | hǎo\n1 | 他 | tā').entries;
+    const b = readText('1 | 你好 | nǐ hǎo\n> 你 | nǐ → ní\n> 好 | hǎo\n1 | 她 | tā\n2 | 老师 | lǎoshī\n> 老 | lǎo\n> 师 | shī').entries;
+    const result = compareReplies(a, b);
+    assert.deepEqual(result.map(e => `${'>'.repeat(e.depth)}${e.word}:${e.compare}`),
+      ['你好:same', '>你:null', '>好:null', '他:differs', '老师:onlyB', '>老:null', '>师:null']);
   });
 });
 
@@ -448,11 +554,13 @@ describe('compareReplies', () => {
     assert.deepEqual(result[1], {
       word: '哪',
       pinyin: 'nǎ',
+      said: '',
       meaning: 'which',
       page: 2,
       unsure: true,
       compare: 'onlyB',
       other: '',
+      depth: 0,
     });
     assert.equal(a[0].compare, null);
   });
@@ -526,6 +634,30 @@ describe('Liao Laoshi worksheet: the AI route (DoD 3)', () => {
   const replyPath = path.join(FIXTURES, 'claude_reply.txt');
   const missing = !fs.existsSync(keyPath) || !fs.existsSync(replyPath);
 
+  test('the words + characters answer for the sample reads into the right tree', { skip: missing && 'answer key missing' }, async () => {
+    const { repeatFlags } = await import('../js/listedit.js');
+    const key = readText(readFixture('sample_key.txt'));
+    const reply = readText(readFixture('claude_reply_v2.txt'));
+    const heads = reply.entries.filter(e => e.depth === 0);
+    const parts = reply.entries.filter(e => e.depth === 1);
+    assert.deepEqual(heads.map(e => e.word), words(key));
+    assert.equal(reply.total, reply.lines);
+    assert.equal(parts.length, 29);
+    assert.equal(reply.echoedExample, false);
+    // The neutral tones printed in the pinyin become arrows on the character lines.
+    const arrows = parts.filter(e => e.said).map(e => `${e.word}:${e.pinyin}→${e.said}`);
+    assert.deepEqual(arrows, ['友:yǒu→you', '姐:jiě→jie', '少:shǎo→shao', '哥:gē→ge', '爸:bà→ba', '妈:mā→ma', '妹:mèi→mei']);
+    // Every character's lines spell its word, and the repeats (国 under 中国 after the word 国,
+    // the second 姐 ...) are printed only once: 49 printed of 59.
+    for (const head of heads) {
+      const start = reply.entries.indexOf(head);
+      const spelled = reply.entries.slice(start + 1).findIndex(e => e.depth === 0);
+      const own = reply.entries.slice(start + 1, spelled === -1 ? undefined : start + 1 + spelled);
+      if (own.length) assert.equal(own.map(e => e.word).join(''), head.word);
+    }
+    assert.equal(repeatFlags(reply.entries).filter(Boolean).length, 10);
+  });
+
   test('the answer key reads as 30 words in two lessons', { skip: missing && 'answer key missing' }, () => {
     const key = readText(readFixture('sample_key.txt'));
     assert.equal(key.name, 'Bài 3–4');
@@ -555,5 +687,42 @@ describe('Liao Laoshi worksheet: the AI route (DoD 3)', () => {
     );
     const comparison = compareReplies(reply.entries, key.entries);
     assert.ok(comparison.every(e => e.compare === 'same'));
+  });
+});
+
+// Found by the independent review of the parts change (each one was wrong before the fix).
+describe('review of the parts change', () => {
+  test('a " ?" at the end of a lesson line is the "not sure" flag, not part of the meaning', () => {
+    const entry = readText('老师 | lǎoshī | teacher ?').entries[0];
+    assert.deepEqual([entry.meaning, entry.unsure], ['teacher', true]);
+  });
+
+  test('a "?" put on the word is the "not sure" flag; a sentence keeps its own question mark', () => {
+    const show = text => readText(text).entries.map(e => `${e.word}${e.unsure ? ' ?' : ''}`);
+    assert.deepEqual(show('1 | 老师? | lǎoshī | teacher'), ['老师 ?']);
+    assert.deepEqual(show('1 | 学生 ? | xuésheng | student'), ['学生 ?']);
+    assert.deepEqual(show('2 | 你好吗？ | Nǐ hǎo ma? | How are you?'), ['你好吗？']);
+    assert.deepEqual(show('1 | 你好 | nǐ hǎo\n> 你 ? | nǐ → ní'), ['你好', '你 ?']);
+  });
+
+  test('a reply is an echo only when it is the whole example', () => {
+    assert.equal(readText('1 | 你好 | nǐ hǎo | hello').echoedExample, false);
+    assert.equal(readText('1 | 你好！ | Nǐ hǎo! | Hello!\n2 | 你好！ | Nǐ hǎo! | Hello!').echoedExample, false);
+    assert.equal(readText('2 | 老师 | lǎoshī | teacher').echoedExample, false);
+  });
+
+  test('lines of tildes in plain text are not code fences', () => {
+    assert.deepEqual(words(readText('你好 谢谢\n~~~~~~~~\n再见 老师')), ['你好', '谢谢', '再见', '老师']);
+  });
+
+  test('a sentence keeps its opening quote and title mark', () => {
+    assert.equal(boxText('“你好”是什么意思？'), '“你好”是什么意思？');
+    assert.equal(boxText('《你好》很好。'), '《你好》很好。');
+  });
+
+  test('lesson lines without ">" are parts when they spell the word above, but a repeat is not', () => {
+    const result = readText('一个 | yí ge | one\n一 | yī → yí | one\n个 | gè → ge\n一百 | yìbǎi | one hundred\n一 | yī → yì | one\n百 | bǎi');
+    assert.deepEqual(result.entries.map(e => `${'>'.repeat(e.depth)}${e.word}`), ['一个', '>一', '>个', '一百', '>一', '>百']);
+    assert.deepEqual(words(readText('国 | guó\n国 | guó\n中国 | Zhōngguó\n中国 | Zhōngguó')), ['国', '中国']);
   });
 });

@@ -517,10 +517,16 @@ test('example sentences: the prompt, filling in, the 12-box limit, Edit, the che
   if (HAVE_PYMUPDF) {
     const text = checkPdf(file).text.join('\n');
     for (const piece of ['我有一个女朋友。', '今天几号？', 'Where will you go for fun tomorrow?']) assert.ok(text.includes(piece), piece);
+    // Each sentence is also written in its own KaiTi row: 我 (only in 我有一个女朋友。) is there
+    // twice, once in the small line and once in the boxes.
+    assert.equal((text.match(/我/g) || []).length, 2, text);
   }
 
   // Save list keeps the sentences, each under its word.
   await page.click('#tab-words');
+  // On large boxes, a word with a sentence has one empty row less: "Page" is 14 rows, not 15.
+  assert.equal(await page.getAttribute('#list .word:nth-child(1) input[data-action="rows-number"]', 'max'), '14');
+  assert.equal(await page.getAttribute('#list .word:nth-child(4) input[data-action="rows-number"]', 'max'), '15');
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#save-list')]);
   const saved = fs.readFileSync(await download.path(), 'utf8');
   assert.match(saved, /^女朋友 \| nǚ péngyou \| girlfriend\n= 我有一个女朋友。 \| Wó yǒu yí ge nǚ péngyou\. \| I have a girlfriend\.$/m);

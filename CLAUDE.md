@@ -429,7 +429,8 @@ repeated words were removed; how many repeats are grey.
     characters (the line prints smaller).
   - Red only where it is printed (grid sheet, large boxes; orange elsewhere): more than 12
     boxes; a character missing from the fonts.
-- Printed on the **large-box sheet only** (see "Large boxes"). When another sheet is chosen and
+- Printed on the **large-box sheet only**: in KaiTi in its own row under the model rows, and as
+  the small line under the grid (see "Large boxes"). When another sheet is chosen and
   some words have a sentence, tab 2 says where they are printed.
 
 **Save list** downloads `<name>.txt` in the lesson format, with the pinyin and meaning columns
@@ -461,7 +462,8 @@ loses nothing, but saved lists are files, because browser storage can be wiped.
   labels.
 - **Rows control, per word:** N empty rows. Quick buttons **1**, **3**, **6**, **Page**, plus a
   number box. **Page** = the whole page (N = 24 small, 15 large; less for a text of several
-  lines: the rest of the page) and is stored as "Page", so it stays a whole page when the box
+  lines, and one less for a word whose example sentence is written in the boxes: the rest of
+  the page) and is stored as "Page", so it stays a whole page when the box
   size changes. A number above the new size's maximum becomes the maximum. The default N is 3,
   stored as a setting.
 - **Page filling:** do a layout pass first. If a block fits in the space left on the current
@@ -533,13 +535,19 @@ Measured from the sample (y = distance from the page top):
 - A grid's bottom may go down to 278.5 mm. So one block has at most 17 rows (N ≤ 15), and two
   blocks of 2 + 6 rows fit on one page, as in the sample.
 - No page header and no page numbers, as in the sample.
-- **Example sentence** (when the word has one): one line `sentence   pinyin   - English` (unknown
-  parts left out), print font, 10 pt, black, from x = 15 mm, baseline 4.5 mm under the grid's
-  bottom: inside the 6.5 mm above the cut line, so no other measurement changes ("Page" is still
-  17 rows; two 2 + 6 blocks still share a page). Shrunk to fit 180 mm, like the label. The word
-  is underlined in the sentence (`underline: { start, end }` on the text; draw.js measures the
-  text before it: 0.05 × size thick, 0.17 × size under the baseline). The lowest sentence
-  baseline is 283 mm.
+- **Example sentence** (when the word has one), in two forms (the owner's decisions):
+  - **In the boxes:** written in KaiTi, one character per box (punctuation from the print font,
+    as in the KaiTi row), on its own row right under the model rows (`exampleRows`: at most 12
+    boxes, so one row). It is an extra row, so the owner's empty rows stay as chosen: the block
+    is 2 + 1 + N rows, and "Page" is 2 + 1 + 14 = 17 rows. Words per page with a sentence row:
+    1 empty row → 3, 3 → 2, 5 → 2, 6 → 1 (two 2 + 6 blocks no longer share a page; 5 rows do),
+    Page → 1. Words without a sentence are unchanged.
+  - **The small line** under the grid: `sentence   pinyin   - English` (unknown parts left
+    out), print font, 10 pt, black, from x = 15 mm, baseline 4.5 mm under the grid's bottom,
+    inside the 6.5 mm above the cut line. Shrunk to fit 180 mm, like the label. The word is
+    underlined in the sentence (`underline: { start, end }` on the text; draw.js measures the
+    text before it: 0.05 × size thick, 0.17 × size under the baseline). The lowest baseline is
+    283 mm.
 - **Changed from the sample:** the sample draws each word as one string, so 朋 and 友 drift left
   of their cell centres. The app centres every character in its own cell.
 
@@ -716,7 +724,8 @@ layoutSheet(items, boxSize) // items = [{ word, pinyin, meaning, rows, example?,
                             // exampleMeaning? }] where rows is a number or "Page"; boxSize =
                             // "small" | "large" (only large prints the example). A long word wraps.
 exampleText(item), exampleUnderline(item) // the example line; where its word is ({ start, end } or null)
-modelLines(word, boxSize), tooLongForPage(word, boxSize), emptyRows(rows, boxSize, lines)
+modelLines(word, boxSize), tooLongForPage(word, boxSize, extra), emptyRows(rows, boxSize, lines, extra)
+exampleRows(item, boxSize)  // -> rows of the example sentence in the boxes (large boxes: 1; else 0)
                             // -> { boxSize, style, blocks, pages }, in PDF points. Each page
                             // lists, in drawing order: crosses, chars (cell centres), grid,
                             // marks (block / cut lines), texts (header, page number, labels).
@@ -839,8 +848,9 @@ Test each of these and report the results in the assessment:
    read back; the prompt lists the words without one at the chosen level; its reply fills in
    without replacing anything; more than 12 boxes is refused when reading and in Edit; the
    check screen shows the sentence with the word underlined, and its warnings; the large-box PDF
-   prints it under the grid with the word underlined and nothing else moved; the other sheets
-   do not print it.
+   writes it in KaiTi in its own row under the model rows (an extra row; "Page" is still one
+   page; the words-per-page table above) and prints the small line under the grid with the word
+   underlined; the other sheets do not print it.
 
 ## Out of scope for v1
 

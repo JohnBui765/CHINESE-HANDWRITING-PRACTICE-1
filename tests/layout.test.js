@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  layoutSheet, emptyRows, labelText, exampleText, exampleUnderline, MM, PAGE_HEIGHT, HEADER_TEXT,
+  layoutSheet, emptyRows, labelText, exampleText, exampleUnderline, tooLongForPage, MM, PAGE_HEIGHT, HEADER_TEXT,
 } from '../js/layout.js';
 
 const item = (word, rows, pinyin = '', meaning = '') => ({ word, pinyin, meaning, rows });
@@ -134,31 +134,50 @@ test('an empty list makes no pages', () => {
   assert.equal(layoutSheet([], 'large').pages.length, 0);
 });
 
-test('large boxes: the example sentence sits under its grid, above the cut line, and moves nothing', () => {
+test('large boxes: the example sentence gets its own KaiTi row under the model rows, and the small line under the grid', () => {
   const items = [
     { ...item('女朋友', 6, 'nǚ péngyou', 'girlfriend'), example: '我有一个女朋友。', examplePinyin: 'Wó yǒu yí ge nǚ péngyou.', exampleMeaning: 'I have a girlfriend.' },
-    { ...item('国', 6, 'guó', 'country'), example: '我是中国人。' },
+    { ...item('国', 5, 'guó', 'country'), example: '我是中国人。' },
   ];
-  const plain = items.map(i => ({ ...i, example: '' }));
   const layout = layoutSheet(items, 'large');
-  // The same blocks and cut line as without sentences: two 2 + 6 blocks still share a page.
-  assert.deepEqual(layout.blocks, layoutSheet(plain, 'large').blocks);
-  assert.deepEqual(layout.pages[0].marks, layoutSheet(plain, 'large').pages[0].marks);
-  const lines = layout.pages[0].texts.filter(t => t.size === 10);
-  assert.equal(lines.length, 2);
+  // One more row per block: 2 model rows + the sentence row + the empty rows (9, then 8 rows:
+  // 17 rows do not fit on one page, so 国 starts page 2).
+  assert.deepEqual(layout.blocks.map(b => [b.page, b.gridTopMm, b.rows]), [[0, 22, 9], [1, 22, 8]]);
+  const p = layout.pages[0];
+  const rowOf = c => Math.round((mmFromTop(c.cy) - 22) / 15 - 0.5);
+  const sentence = p.chars.filter(c => rowOf(c) === 2);
+  assert.equal(sentence.map(c => c.ch).join(''), '我有一个女朋友。');
+  assert.deepEqual(sentence.map(c => c.font), [...'kkkkkkkp'].map(f => (f === 'k' ? 'kai' : 'print')));
+  sentence.forEach((c, i) => near(c.cx / MM, 15 + 15 * i + 7.5, `sentence x ${i}`));
+  assert.equal(p.chars.filter(c => rowOf(c) < 2).length, 6, 'the model rows are unchanged');
+  // The small line sits 4.5 mm under the taller grid (22 + 9 x 15 = 157 mm).
+  const lines = p.texts.filter(t => t.size === 10);
+  assert.equal(lines.length, 1);
   assert.equal(lines[0].text, '我有一个女朋友。   Wó yǒu yí ge nǚ péngyou.   - I have a girlfriend.');
-  near(lines[0].x / MM, 15, 'example x');
-  near(lines[0].maxWidth / MM, 180, 'example width');
-  near(mmFromTop(lines[0].y), 142 + 4.5, 'baseline 4.5 mm under the first grid (22 + 8 x 15)');
-  near(mmFromTop(lines[1].y), 278.5 + 4.5, 'baseline under the second grid');
-  assert.ok(mmFromTop(lines[0].y) + 1.5 < 148.5, 'descenders stay above the cut line');
+  near(mmFromTop(lines[0].y), 157 + 4.5, 'small line baseline');
+  near(lines[0].x / MM, 15, 'small line x');
+  near(lines[0].maxWidth / MM, 180, 'small line width');
   assert.deepEqual(lines[0].underline, { start: 4, end: 7 });
-  assert.deepEqual([lines[1].text, lines[1].underline], ['我是中国人。', { start: 3, end: 4 }]);
-  // A Page block: the sentence is at the bottom of the page.
-  const page = layoutSheet([{ ...items[0], rows: 'Page' }], 'large').pages[0].texts.filter(t => t.size === 10);
-  near(mmFromTop(page[0].y), 277 + 4.5, 'bottom of the page');
-  // Small boxes print no sentence.
-  assert.deepEqual(layoutSheet(items, 'small').pages.map(p => p.texts.length), layoutSheet(plain, 'small').pages.map(p => p.texts.length));
+  // "Page" still fills one page: 2 + 1 + 14 = 17 rows; the small line is at the bottom.
+  assert.equal(emptyRows('Page', 'large', 1, 1), 14);
+  const page = layoutSheet([{ ...items[0], rows: 'Page' }], 'large');
+  assert.deepEqual(page.blocks.map(b => b.rows), [17]);
+  near(mmFromTop(page.pages[0].texts.find(t => t.size === 10).y), 277 + 4.5, 'bottom of the page');
+  // The sentence row counts for "too long for one page" (8 lines of 12 + 1 = 17 rows fit).
+  assert.equal(tooLongForPage('一'.repeat(96), 'large', 1), false);
+  assert.equal(tooLongForPage('一'.repeat(96), 'large', 2), true);
+  // Small boxes: no sentence row and no line.
+  const plain = items.map(i => ({ ...i, example: '' }));
+  const shape = l => l.pages.map(pg => [pg.chars.length, pg.texts.length]);
+  assert.deepEqual(layoutSheet(items, 'small').blocks, layoutSheet(plain, 'small').blocks);
+  assert.deepEqual(shape(layoutSheet(items, 'small')), shape(layoutSheet(plain, 'small')));
+});
+
+test('large boxes: words per page with a sentence row (rows 1 → 3, 3 → 2, 5 → 2, 6 → 1, Page → 1)', () => {
+  const perPage = (rows, example) => layoutSheet(Array.from({ length: 6 }, () => ({ ...item('哪', rows), example })), 'large')
+    .blocks.filter(b => b.page === 0).length;
+  assert.deepEqual([1, 3, 5, 6, 'Page'].map(rows => perPage(rows, '你去哪儿？')), [3, 2, 2, 1, 1]);
+  assert.deepEqual([1, 3, 5, 6, 'Page'].map(rows => perPage(rows, '')), [4, 2, 2, 2, 1]);   // without: unchanged
 });
 
 test('example line: unknown parts are left out; no underline when the word is not in the sentence', () => {

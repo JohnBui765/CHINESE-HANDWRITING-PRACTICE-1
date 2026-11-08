@@ -67,15 +67,17 @@ export function modelLines(word, boxSize) {
   return Math.max(1, Math.ceil([...word].length / SIZES[boxSize].columns));
 }
 
-// True when a word or sentence does not fit on one page, even with no empty rows.
-export function tooLongForPage(word, boxSize) {
-  return 2 * modelLines(word, boxSize) > SIZES[boxSize].maxRows + 2;
+// True when a word or sentence does not fit on one page, even with no empty rows. `extra` is
+// the number of rows of its example sentence (see exampleRows).
+export function tooLongForPage(word, boxSize, extra = 0) {
+  return 2 * modelLines(word, boxSize) + extra > SIZES[boxSize].maxRows + 2;
 }
 
 // How many empty rows a word gets on this box size. rows is a number or "Page" (the rest of
-// the page); a word with more model lines has fewer rows left on a page.
-export function emptyRows(rows, boxSize, lines = 1) {
-  const max = SIZES[boxSize].maxRows - 2 * (lines - 1);
+// the page); a word with more model lines, or with its example sentence in the boxes (`extra`
+// rows), has fewer rows left on a page.
+export function emptyRows(rows, boxSize, lines = 1, extra = 0) {
+  const max = Math.max(0, SIZES[boxSize].maxRows - 2 * (lines - 1) - extra);
   if (rows === 'Page') return max;
   const n = Math.floor(Number(rows));
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -108,10 +110,19 @@ export function exampleUnderline(item) {
   return start < 0 ? null : { start, end: start + word.length };
 }
 
-// The rows of one block: model lines (KaiTi + print each) and the empty rows.
+// Large boxes write a word's example sentence in KaiTi, one character per box, on its own row
+// right under the model rows (12 boxes at most: one row). Small boxes do not.
+export function exampleRows(item, boxSize) {
+  if (boxSize !== 'large' || !item.example) return 0;
+  return Math.ceil([...item.example].length / SIZES.large.columns);
+}
+
+// The rows of one block: model lines (KaiTi + print each), the example sentence's row and the
+// empty rows.
 function blockRows(item, boxSize) {
   const lines = modelLines(item.word, boxSize);
-  return 2 * lines + emptyRows(item.rows, boxSize, lines);
+  const extra = exampleRows(item, boxSize);
+  return 2 * lines + extra + emptyRows(item.rows, boxSize, lines, extra);
 }
 
 function newPage() {
@@ -127,6 +138,15 @@ function addModelRows(page, word, x0, rowTop, box, columns) {
     const top = rowTop - 2 * Math.floor(i / columns) * box;
     page.chars.push({ ch, font: kaiRowFont(ch), cx, cy: top - box / 2 });
     page.chars.push({ ch, font: 'print', cx, cy: top - box - box / 2 });
+  });
+}
+
+// The example sentence in KaiTi on the row(s) starting at rowTop, one character per cell,
+// punctuation from the print font as in the KaiTi row.
+function addSentenceRows(page, text, x0, rowTop, box, columns) {
+  [...text].forEach((ch, i) => {
+    const cx = x0 + (i % columns + 0.5) * box;
+    page.chars.push({ ch, font: kaiRowFont(ch), cx, cy: rowTop - Math.floor(i / columns) * box - box / 2 });
   });
 }
 
@@ -257,6 +277,9 @@ function layoutLarge(items) {
       out.grid.push({ x1: x, y1: top, x2: x, y2: top - rows * box });
     }
     addModelRows(out, item.word, x0, top, box, size.columns);
+    if (item.example) {
+      addSentenceRows(out, item.example, x0, top - 2 * modelLines(item.word, 'large') * box, box, size.columns);
+    }
     blocks.push({ page: pages.length - 1, gridTopMm, rows });
     lastBottom = gridTopMm + rows * boxMm;
     if (item.example) {
@@ -271,7 +294,8 @@ function layoutLarge(items) {
 }
 
 // items = [{ word, pinyin, meaning, rows, example?, examplePinyin?, exampleMeaning? }],
-// boxSize = "small" | "large" (only large boxes print the example sentence, under the grid).
+// boxSize = "small" | "large" (only large boxes print the example sentence: in KaiTi on its
+// own row under the model rows, and as a small line with pinyin and English under the grid).
 // Returns { boxSize, style, pages, blocks }. Each page lists, in drawing order:
 // crosses (dashed), chars (cell centres), grid (solid), marks (block/cut lines), texts
 // (a text may have `underline`: { start, end } of the characters to underline).
@@ -279,7 +303,7 @@ export function layoutSheet(items, boxSize = 'small') {
   if (!SIZES[boxSize]) throw new Error(`Unknown box size: ${boxSize}`);
   for (const item of items) {
     if ([...item.word].length === 0) throw new Error('A word is empty.');
-    if (tooLongForPage(item.word, boxSize)) {
+    if (tooLongForPage(item.word, boxSize, exampleRows(item, boxSize))) {
       throw new Error(`"${item.word}" is too long for one page.`);
     }
   }

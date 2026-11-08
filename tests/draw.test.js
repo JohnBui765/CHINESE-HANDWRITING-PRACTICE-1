@@ -143,7 +143,7 @@ chars = []
 for block in page.get_text('rawdict')['blocks']:
     for line in block.get('lines', []):
         for span in line['spans']:
-            if ''.join(c['c'] for c in span['chars']).startswith(sys.argv[2]):
+            if span['size'] < 11 and ''.join(c['c'] for c in span['chars']).startswith(sys.argv[2]):
                 chars = [[c['c'], c['bbox'][0], c['bbox'][2], c['origin'][1]] for c in span['chars']]
 lines = [[i[1].x, i[2].x, i[1].y] for d in page.get_drawings() for i in d['items']
          if i[0] == 'l' and abs(i[1].y - i[2].y) < 0.01]
@@ -159,6 +159,8 @@ test('an example sentence is printed under the grid, with its word underlined', 
   fs.writeFileSync(file, await drawSheet(layoutSheet(items, 'large'), fonts, 'Examples'));
   const text = check(file, '--json').text.join('\n');
   for (const piece of ['我有一个女朋友。', 'Wó yǒu yí ge nǚ péngyou.', '- I have a girlfriend.']) assert.ok(text.includes(piece), piece);
+  // The sentence is also written in the boxes: 有 is in the small line and in the KaiTi row.
+  assert.equal((text.match(/有/g) || []).length, 2);
   const found = JSON.parse(execFileSync(PYTHON, ['-c', UNDERLINE_CHECK, file, '我有一个'], { encoding: 'utf-8' }));
   const [nv, , you] = found.chars.slice(4, 7);
   assert.deepEqual([nv[0], you[0]], ['女', '友']);

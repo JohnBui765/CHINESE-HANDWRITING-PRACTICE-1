@@ -100,7 +100,11 @@ Choose one way to bring in words:
     copy the sentence by hand.)
   - Orange: the AI was not sure, the sentence does not contain the word, the pinyin or the
     English is missing or does not fit, an unusual character, or a long English translation.
-  - The sentences are printed on the **large-box** sheet only, under each word's boxes.
+  - On the **large-box** sheet each sentence is written in the handwriting font (KaiTi) in its
+    own row, right under the word's two model rows, so you can copy it in the empty rows below.
+    It is also printed small, with its pinyin and English, under the word's boxes. The
+    sentence row is an extra row: with **6** empty rows each such word takes a whole page;
+    choose **5** to keep two words on a page. The other sheets do not show sentences.
 - **Grey rows** are repeats: every word or character is printed only the first time it appears
   (十 in 二十, 三十, 四十… is printed once). The grey rows stay so you can still read their
   pinyin (一 is *yí* in 一个 but *yì* in 一百). **Print again** prints one anyway.
@@ -111,8 +115,9 @@ Choose one way to bring in words:
 
 1. Choose the box size:
    - **Small boxes**: 10 mm, 18 per row, 26 rows per page, no pinyin.
-   - **Large boxes**: 15 mm, 12 per row, a line above each word with its pinyin and meaning, and
-     its example sentence (if it has one) on one line under its boxes, the word underlined.
+   - **Large boxes**: 15 mm, 12 per row, a line above each word with its pinyin and meaning. A
+     word's example sentence (if it has one) is written in KaiTi in a row under the model rows,
+     and printed small with its pinyin and English under the word's boxes, the word underlined.
    - A sentence longer than a row carries on in the next row; each punctuation mark gets its
      own box, as on Chinese composition paper.
 2. Press **Make PDF**, wait for "Done", then press **Save PDF**.

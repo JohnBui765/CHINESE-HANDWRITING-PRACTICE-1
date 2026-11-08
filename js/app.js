@@ -6,7 +6,7 @@ import {
   EXAMPLE_MAX_BOXES, isSentence,
 } from './extract.js';
 import { readFile } from './readers.js';
-import { layoutSheet, emptyRows, modelLines, tooLongForPage, exampleUnderline, SIZES } from './layout.js';
+import { layoutSheet, emptyRows, modelLines, tooLongForPage, exampleUnderline, exampleRows, SIZES } from './layout.js';
 import { layoutPractice, practiceTooLong } from './practice.js';
 import { loadSettings, saveSettings, loadCurrent, saveCurrent, saveFile } from './store.js';
 import {
@@ -112,7 +112,7 @@ function checkEntry(entry, index) {
     if (!entry.pinyin) warnings.push('No pinyin: left empty on the practice sheet');
     if (!entry.meaning) warnings.push('No meaning: left empty on the practice sheet');
     if (practiceTooLong(entry.word, settings.practiceBox)) errors.push('Too long for one page: split it with Edit');
-  } else if (tooLongForPage(entry.word, settings.boxSize)) {
+  } else if (tooLongForPage(entry.word, settings.boxSize, exampleRows(entry, settings.boxSize))) {
     errors.push('Too long for one page: split it with Edit');
   }
   return { warnings, errors };
@@ -160,6 +160,7 @@ function errorCount() {
 
 function rowsControl(entry, index) {
   const lines = modelLines(entry.word, settings.boxSize);
+  const extra = exampleRows(entry, settings.boxSize);   // the example sentence's row (large boxes)
   const box = el('div', { class: 'rows', role: 'group', 'aria-label': 'Empty rows' }, el('span', {}, 'Rows:'));
   for (const choice of [1, 3, 6, 'Page']) {
     box.append(el('button', {
@@ -168,9 +169,9 @@ function rowsControl(entry, index) {
     }, String(choice)));
   }
   box.append(el('input', {
-    type: 'number', min: 0, max: emptyRows('Page', settings.boxSize, lines), inputmode: 'numeric',
+    type: 'number', min: 0, max: emptyRows('Page', settings.boxSize, lines, extra), inputmode: 'numeric',
     'aria-label': 'Number of empty rows', 'data-action': 'rows-number', 'data-index': index,
-    value: emptyRows(entry.rows, settings.boxSize, lines),
+    value: emptyRows(entry.rows, settings.boxSize, lines, extra),
   }));
   return box;
 }
@@ -616,7 +617,8 @@ function onListChange(event) {
   const input = event.target;
   if (input.dataset.action !== 'rows-number') return;
   const index = Number(input.dataset.index);
-  const max = emptyRows('Page', settings.boxSize, modelLines(list.entries[index].word, settings.boxSize));
+  const entry = list.entries[index];
+  const max = emptyRows('Page', settings.boxSize, modelLines(entry.word, settings.boxSize), exampleRows(entry, settings.boxSize));
   let n = Math.floor(Number(input.value));
   if (!Number.isFinite(n) || n < 0) n = 0;
   list.entries[index].rows = n >= max ? 'Page' : n;

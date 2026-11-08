@@ -67,20 +67,23 @@ export async function drawSheet(layout, fontBytes, title = 'Hanzi Grid', options
     //    each kind has its own style in layout.style
     for (const m of p.marks) line(page, m, style[m.kind]);
 
-    // 5. header, page numbers and labels; shrink a text that is wider than its space
+    // 5. header, page numbers, labels and example sentences; shrink a text that is wider than
+    //    its space
     for (const t of p.texts) {
       const font = fonts[t.font];
       let size = t.size;
       const natural = font.widthOfTextAtSize(t.text, size);
       if (t.maxWidth && natural > t.maxWidth) size = size * t.maxWidth / natural;
       const width = font.widthOfTextAtSize(t.text, size);
-      page.drawText(t.text, {
-        x: t.align === 'right' ? t.x - width : t.x,
-        y: t.y,
-        size,
-        font,
-        color: colour(t.color),
-      });
+      const x = t.align === 'right' ? t.x - width : t.x;
+      page.drawText(t.text, { x, y: t.y, size, font, color: colour(t.color) });
+      // An example sentence underlines its word: the same characters as in the boxes above.
+      if (t.underline) {
+        const start = x + font.widthOfTextAtSize(t.text.slice(0, t.underline.start), size);
+        const end = x + font.widthOfTextAtSize(t.text.slice(0, t.underline.end), size);
+        const y = t.y - 0.17 * size;
+        page.drawLine({ start: { x: start, y }, end: { x: end, y }, thickness: 0.05 * size, color: colour(t.color) });
+      }
     }
   }
   return await pdf.save();

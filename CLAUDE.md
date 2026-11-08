@@ -195,6 +195,7 @@ column, big touch targets) and on a PC.
   ```
   # Bài 5
   女朋友 | nǚ péngyou | girlfriend
+  = 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.
   > 友 | yǒu → you | friend
   哪 | nǎ | which
   你好！ | Ní hǎo! | Hello!
@@ -204,7 +205,8 @@ column, big touch targets) and on a PC.
   sentence's punctuation, see the reply reader), the second the pinyin (`yǒu → you`: the
   dictionary pinyin, then the pinyin as said in the word above), the third the meaning. A line
   starting with `> ` is a **part** of the line above it (a character of a word, a chunk of a
-  sentence); `>> ` is a part of a part.
+  sentence); `>> ` is a part of a part. A line starting with `= ` is the **example sentence** of
+  the line right above it (see "Example sentences").
 
 ### The AI prompts and the reply format
 
@@ -220,8 +222,9 @@ column, big touch targets) and on a PC.
     punctuation, its pinyin as said, an English translation, and under it its lexical chunks:
     `> chunk | dictionary pinyin (→ as said) | meaning`.
   - `prompts/pinyin-meaning.txt`: see "Split and the pinyin prompt".
-  - `PROMPT_EXAMPLES` in `extract.js` (and `PINYIN_PROMPT_EXAMPLE` in `listedit.js`) must match
-    the format examples; tests check that, and that no example word is in the samples.
+  - `prompts/examples.txt`: see "Example sentences".
+  - `PROMPT_EXAMPLES` in `extract.js` (and `PINYIN_PROMPT_EXAMPLE`, `EXAMPLE_PROMPT_EXAMPLE` in
+    `listedit.js`) must match the format examples; tests check that, and that no example word is in the samples.
 - **Reply format:**
   ```
   # Bài 9
@@ -264,6 +267,9 @@ column, big touch targets) and on a PC.
   consecutive vowels `a e i o u ü v`, with or without tone marks; spaces, apostrophes and hyphens
   separate groups: `nǚ péngyou` = 3, `jiějie` = 2, `Xī'ān` = 2) equals the number of Chinese
   characters, or `splitPinyin` can cut it (it knows `nǎr` for 哪儿). Otherwise a warning.
+  In a sentence (and an example sentence) an r-ending can be anywhere: each 儿 after another
+  character may also share that character's syllable (这儿是我家 `Zhèr shì wǒ jiā`;
+  `sentencePinyinFits` in `listedit.js`).
 - Pinyin and meaning are printed on the **large-box** sheet and the practice sheet, with the
   arrow (`nǐ → ní`) when the pinyin as said is known. On the small-box sheet the pinyin is used
   only for the check above.
@@ -281,10 +287,12 @@ chunks of a sentence) are indented under their word, with a line on the left. Ea
 - the page number (words from an AI reply)
 - warnings and errors
 - the rows control (see Part 2)
-- buttons: **Edit** (word, pinyin `nǐ → ní`, meaning; a changed word loses its parts),
+- the example sentence, if any, with the word underlined (see "Example sentences")
+- buttons: **Edit** (word, pinyin `nǐ → ní`, meaning, example sentence with its pinyin and
+  English; a changed word loses its parts),
   **Split** / **Unsplit**, **Delete** (with its parts); on words and sentences also **↑ ↓**
   (they move with their parts) and **Merge ↓** (two words without parts: words joined; pinyin
-  joined with a space; meanings joined with "; ")
+  joined with a space; meanings joined with "; "; example sentences cleared)
 
 **Repeats:** a word is printed only the first time it appears in the list (as a word, a part or
 a character): 十 in 二十, 三十, 四十… is printed once. Later copies stay in the list, grey, with
@@ -368,7 +376,61 @@ repeated words were removed; how many repeats are grey.
   list has them (水果 is a real HSK 1 word). It says how many words got something new, or that
   there was nothing to fill in (with the hint to press "Clear list" first). A text with page
   numbers (an answer to a worksheet prompt) is always a new list.
-- Saved lists (`.txt`) keep the parts (`> ` lines) and the arrows, not `splitFrom` or `again`.
+- Saved lists (`.txt`) keep the parts (`> ` lines), the arrows and the example sentences (`= `
+  lines), not `splitFrom`, `again` or the ` ?` flags.
+
+### Example sentences (to learn each word in context)
+
+- Each entry may have **one example sentence**: `example` (box text, like a sentence entry),
+  `examplePinyin` (as said), `exampleMeaning` (English), `exampleUnsure` (the AI ended its line
+  with ` ?`). All optional: missing or "" means none. In the lesson and reply formats it is a
+  `= ` line under its entry: `= 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.`
+  - A `= ` line belongs to the line right above it (a word, a sentence or a part); a second one
+    is ignored, and so is one with no Chinese or no line above it. `= ` lines are not word lines
+    (`# total`), and a lost `>` after them is still found. `=>` and `===` lines are not `= `
+    lines. A ` ?` after a space or `|` is the "not sure" flag; a `?` right after Chinese is the
+    sentence's own question mark. A repeated word gives its sentence to the first one if that
+    has none. The sentence is the first column with Chinese, then the pinyin, then the English.
+  - `= ` lines are read only in the lesson format: a text with `|` columns or `> ` lines, or an
+    AI's code block. Elsewhere (a worksheet `.docx` or PDF, pasted prose) a line that starts
+    with `=` is ordinary text, read as before. So a saved `= ` line always keeps a `|`
+    (`= 我喜欢猫。 |` when it has no pinyin or English).
+- **At most 12 boxes** (`EXAMPLE_MAX_BOXES`), the owner's decision: the line must fit under the
+  grid at a readable size (measured with the print font: 12 boxes print at 8.4–10 pt; 21 boxes
+  would need 5 pt), and 12 boxes are one row of large boxes, for copying the sentence by hand.
+  A longer sentence is never taken in: reading a reply or a list drops it and names the word
+  ("1 example sentence(s) had more than 12 boxes and were not added (号): press “Copy AI prompt:
+  example sentences” again …"), and Edit refuses it inside the form. The owner cannot shorten a
+  Chinese sentence yet, so the AI writes a new one. (The drop comes after the fill-in-or-new-list
+  decision, so a reply whose sentences are all too long still fills in nothing, not a new list.)
+- **Copy AI prompt: example sentences** (under the list, with a level picker HSK 1–6, setting
+  `exampleLevel`) copies `prompts/examples.txt` with every `{LEVEL}` replaced by "HSK n", plus
+  every word (depth 0, not a sentence) that is printed somewhere without an example sentence
+  (where it first appears, which may be a line under another word, or a "Print again" copy),
+  once each. A list with only sentences gets "There is no word to ask about". The prompt asks for one natural everyday sentence per word: only words of that level or
+  lower plus the words of the list, the word unchanged and in one piece, 5–10 boxes and never
+  more than 12, pinyin as said with the TONE CHANGES of `prompts/sentences.txt`, an English
+  translation of at most 10 words, ` ?` when unsure. Its format example is 猫 and 下雨
+  (`EXAMPLE_PROMPT_EXAMPLE`, not in the samples); a reply with only those words (when the list
+  lacks them) "only repeats the example". The level is only asked for: the app has no HSK word
+  list to check it.
+- **Filling in** works as for the pinyin prompt (no page numbers, every useful pasted word is in
+  the list; a word with a sentence is useful): a sentence goes to every entry with that word
+  that has none. A sentence the list already has is never replaced; the same sentence only gets
+  its missing pinyin or English. The message says, in words (not entries), what was filled
+  in: pinyin and meanings, new sentences, the missing pinyin or English of a sentence.
+- **Check screen:** the sentence is shown under the word's pinyin and meaning, the word
+  underlined (the same `exampleUnderline` as the PDF). Edit has three more fields (empty
+  sentence = none; saving clears `exampleUnsure`). Merge ↓ clears the sentences; Split gives
+  the parts none.
+  - Orange: the AI was not sure (` ?`); the sentence does not contain the word (no underline);
+    no pinyin or no English; the pinyin does not fit the sentence (the Pinyin check, on its
+    Chinese characters); a character not in `data/common3500.txt`; English longer than 60
+    characters (the line prints smaller).
+  - Red only where it is printed (grid sheet, large boxes; orange elsewhere): more than 12
+    boxes; a character missing from the fonts.
+- Printed on the **large-box sheet only** (see "Large boxes"). When another sheet is chosen and
+  some words have a sentence, tab 2 says where they are printed.
 
 **Save list** downloads `<name>.txt` in the lesson format, with the pinyin and meaning columns
 when known (on iPhone: through the Share sheet, e.g. Save to Files). **Open list** is the normal
@@ -471,6 +533,13 @@ Measured from the sample (y = distance from the page top):
 - A grid's bottom may go down to 278.5 mm. So one block has at most 17 rows (N ≤ 15), and two
   blocks of 2 + 6 rows fit on one page, as in the sample.
 - No page header and no page numbers, as in the sample.
+- **Example sentence** (when the word has one): one line `sentence   pinyin   - English` (unknown
+  parts left out), print font, 10 pt, black, from x = 15 mm, baseline 4.5 mm under the grid's
+  bottom: inside the 6.5 mm above the cut line, so no other measurement changes ("Page" is still
+  17 rows; two 2 + 6 blocks still share a page). Shrunk to fit 180 mm, like the label. The word
+  is underlined in the sentence (`underline: { start, end }` on the text; draw.js measures the
+  text before it: 0.05 × size thick, 0.17 × size under the baseline). The lowest sentence
+  baseline is 283 mm.
 - **Changed from the sample:** the sample draws each word as one string, so 朋 and 友 drift left
   of their cell centres. The app centres every character in its own cell.
 
@@ -534,7 +603,8 @@ Three parts; each part starts on a new page. One row per word: number, the word'
 ## Settings
 
 localStorage `chinese-handwriting-practice-1.settings`: default empty rows (3), box size (small),
-sheet type (grid), practice box size (14), rounds (3).
+sheet type (grid), practice box size (14), rounds (3), example sentence level (`exampleLevel`, 1
+= HSK 1).
 
 ## Files and folders
 
@@ -559,7 +629,8 @@ sheet type (grid), practice box size (14), rounds (3).
   `README.txt` (the modification notice); `fonts/source/`: the full original fonts.
 - `prompts/worksheet.txt`: the AI prompt for words + characters. `prompts/sentences.txt`: the
   AI prompt for sentences + chunks. `prompts/pinyin-meaning.txt`: the AI prompt for pinyin and
-  meanings.
+  meanings. `prompts/examples.txt`: the AI prompt for example sentences (the app fills in
+  `{LEVEL}`).
 - `data/common3500.txt`: 通用规范汉字表 (2013), level 1, exactly 3,500 characters, one per line.
   `data/common8105.txt`: all three levels, exactly 8,105 (3,500 + 3,000 + 1,605), used to make
   the font subsets.
@@ -602,6 +673,7 @@ groupsOf(entries)             // -> [{ head, parts }]: each word or sentence wit
 boxText(text)                 // -> Chinese characters + sentence punctuation (one box each)
 chineseChars(text), isSentence(word), splitArrow("nǐ → ní") // -> "你好", true/false, { pinyin, said }
 PUNCTUATION, PROMPT_EXAMPLES  // the boxed punctuation marks; the prompts' format examples
+EXAMPLE_MAX_BOXES             // 12: the most boxes an example sentence may have
 countSyllables(pinyin)        // -> number (the pinyin check)
 toLessonText(name, entries)   // -> the text of a saved list (lesson format)
 safeFileName(name)            // -> name with characters Windows forbids replaced by "_"
@@ -629,6 +701,9 @@ Entry = {
   other,    // for "differs": the second reply's word; otherwise ""
   splitFrom, // set by Split: the word this character came from (its pinyin came from there)
   again,    // true when the owner pressed "Print again" on a repeat
+  example,  // optional: the example sentence (box text, at most 12 boxes), from an "= " line
+  examplePinyin, exampleMeaning, // its pinyin as said and its English ("" when unknown)
+  exampleUnsure, // true when the AI ended the "= " line with " ?"
 }
 
 // js/readers.js: browser only
@@ -637,8 +712,10 @@ docxText(arrayBuffer) // -> text, one line per paragraph
 pdfText(arrayBuffer)  // -> text, one line per text line, pages in order
 
 // js/layout.js: no browser APIs
-layoutSheet(items, boxSize) // items = [{ word, pinyin, meaning, rows }] where rows is a number
-                            // or "Page"; boxSize = "small" | "large". A long word wraps.
+layoutSheet(items, boxSize) // items = [{ word, pinyin, meaning, rows, example?, examplePinyin?,
+                            // exampleMeaning? }] where rows is a number or "Page"; boxSize =
+                            // "small" | "large" (only large prints the example). A long word wraps.
+exampleText(item), exampleUnderline(item) // the example line; where its word is ({ start, end } or null)
 modelLines(word, boxSize), tooLongForPage(word, boxSize), emptyRows(rows, boxSize, lines)
                             // -> { boxSize, style, blocks, pages }, in PDF points. Each page
                             // lists, in drawing order: crosses, chars (cell centres), grid,
@@ -659,9 +736,13 @@ repeatFlags(entries)               // -> true for every grey repeat (printed onl
 printedEntries(entries)            // -> the entries that go on the sheet
 groupEnd(entries, index), partIndexes(entries, index) // where a word's parts are
 allInList(entries, incoming)       // -> true when the paste fills in instead of replacing
-fillIn(entries, incoming)          // -> { entries, updated }
+fillIn(entries, incoming)          // -> { entries, updated, filled, examples, completed }
+pinyinFits(pinyin, chars), sentencePinyinFits(pinyin, chars) // the Pinyin check (word / sentence)
 pinyinPrompt(promptText, entries)  // -> the prompt + the words that need help, or ''
 isPinyinPromptExample(incoming, entries) // -> true when the reply only repeats the example
+examplePrompt(promptText, entries, level) // -> the example sentences prompt + the words without one, or ''
+isExamplePromptExample(incoming, entries) // -> true when the reply only repeats its example
+dropLongExamples(entries)          // -> { entries, dropped }: sentences of more than 12 boxes taken out
 
 // js/draw.js: runs in the worker and in Node
 drawSheet(layout, fontBytes, title) // fontBytes = { kai, print } (ArrayBuffer) -> Uint8Array (the PDF)
@@ -753,6 +834,13 @@ Test each of these and report the results in the assessment:
    mode, Copy AI prompt, paste a reply, make a sheet in both sizes, Save PDF → Save to Files and
    Print.
 12. The README steps work: install on Windows and iPhone, and publish on GitHub Pages.
+13. Example sentences: `= ` lines are read under the right entry (lesson and reply formats,
+   fences, ` ?`, a sentence's own question mark, a lost `>` after them, `# total`), saved and
+   read back; the prompt lists the words without one at the chosen level; its reply fills in
+   without replacing anything; more than 12 boxes is refused when reading and in Edit; the
+   check screen shows the sentence with the word underlined, and its warnings; the large-box PDF
+   prints it under the grid with the word underlined and nothing else moved; the other sheets
+   do not print it.
 
 ## Out of scope for v1
 
@@ -761,6 +849,7 @@ Test each of these and report the results in the assessment:
 - making pinyin automatically from characters (it comes from the AI replies, is typed, or is the
   word's syllable when splitting)
 - a character bank and a "New only" filter
+- checking an example sentence's HSK level against a word list (it needs a new data file)
 - stroke-order animation
 - faint trace copies in the empty boxes
 - reading the PC's installed Microsoft YaHei (Local Font Access works only in Chrome/Edge on a PC)

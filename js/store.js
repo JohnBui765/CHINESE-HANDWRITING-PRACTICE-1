@@ -5,7 +5,10 @@
 const PREFIX = 'chinese-handwriting-practice-1.';
 
 // sheetType: "grid" (small or large boxes) or "practice" (model list, side B, mixed rounds)
-export const DEFAULT_SETTINGS = { defaultRows: 3, boxSize: 'small', sheetType: 'grid', practiceBox: 14, rounds: 3 };
+// exampleLevel: the HSK level (1-6) that "Copy AI prompt: example sentences" asks for
+export const DEFAULT_SETTINGS = {
+  defaultRows: 3, boxSize: 'small', sheetType: 'grid', practiceBox: 14, rounds: 3, exampleLevel: 1,
+};
 
 // localStorage can be missing or full (private browsing), so every read and write is
 // wrapped: the app keeps working, it just doesn't remember.

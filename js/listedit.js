@@ -1,6 +1,7 @@
 // Changes to the word list that the check screen offers: Split and Unsplit, moving and
-// deleting a word with its parts, the repeats that are printed only once, filling in pinyin
-// and meaning from an AI reply, and the pinyin prompt. No browser APIs, so Node can test it.
+// deleting a word with its parts, the repeats that are printed only once, filling in pinyin,
+// meaning and example sentences from an AI reply, and the pinyin and example prompts.
+// No browser APIs, so Node can test it.
 //
 // The list is flat. A word's parts follow it, one level deeper (depth 1): its characters, or
 // the chunks of a sentence (and the characters of a chunk, depth 2).
@@ -10,15 +11,33 @@
 // change inside a word (友 is yǒu on its own, but "you" in 朋友).
 
 import { splitPinyin } from './pinyin.js';
-import { chineseChars, groupsOf } from './extract.js';
+import { chineseChars, groupsOf, isSentence, countSyllables, EXAMPLE_MAX_BOXES } from './extract.js';
 
 // The format example in prompts/pinyin-meaning.txt. If the AI's reply has only these
 // characters, it repeated the example instead of answering.
 export const PINYIN_PROMPT_EXAMPLE = ['山', '水果', '水', '果'];
+// The same for the format example in prompts/examples.txt (the example sentences prompt).
+export const EXAMPLE_PROMPT_EXAMPLE = ['猫', '下雨'];
 
 const MOST_DEPTH = 2;   // sentence -> chunk -> character
 
 const depthOf = entry => entry.depth || 0;
+
+// The pinyin fits the word: one syllable per character (counted, or cut by splitPinyin, which
+// also knows words ending in 儿 such as 哪儿 "nǎr").
+export function pinyinFits(pinyin, chars) {
+  return countSyllables(pinyin) === [...chars].length || splitPinyin(pinyin, chars) !== null;
+}
+
+// The same for a sentence, where an r-ending can be anywhere (这儿是我家 "Zhèr shì wǒ jiā",
+// 我会说一点儿汉语 "… yìdiǎnr …"): a 儿 after another character may share its syllable.
+export function sentencePinyinFits(pinyin, chars) {
+  if (pinyinFits(pinyin, chars)) return true;
+  const list = [...chars];
+  const rEndings = list.filter((ch, i) => i > 0 && ch === '儿').length;
+  const count = countSyllables(pinyin);
+  return count < list.length && count >= list.length - rEndings;
+}
 
 // The index just after the entry's parts (and their parts).
 export function groupEnd(entries, index) {
@@ -154,9 +173,10 @@ export function moveEntry(entries, index, direction) {
 // "女 | nǚ | woman"), leaving out the prompt's example words that the list does not have (a
 // list may well have 水果). Words from the AI's own remarks ("as in 朋友") have neither pinyin
 // nor meaning, so they don't count.
+// A word with an example sentence counts too (the reply to the example sentences prompt).
 function usefulLines(incoming, inList) {
-  return incoming.filter(entry => !(entry.depth > 0) && (entry.pinyin || entry.meaning) &&
-    !(PINYIN_PROMPT_EXAMPLE.includes(entry.word) && !inList.has(entry.word)));
+  return incoming.filter(entry => !(entry.depth > 0) && (entry.pinyin || entry.meaning || entry.example) &&
+    !([...PINYIN_PROMPT_EXAMPLE, ...EXAMPLE_PROMPT_EXAMPLE].includes(entry.word) && !inList.has(entry.word)));
 }
 
 // True when every useful pasted word (see usefulLines) is already in the current list (as a
@@ -167,12 +187,16 @@ export function allInList(entries, incoming) {
   return useful.length > 0 && useful.every(entry => words.has(entry.word));
 }
 
-// Fills in pinyin and meaning from a pasted list (e.g. the AI's reply to the pinyin prompt).
-// It only fills what is missing: an empty pinyin or meaning, or pinyin cut from a word (then
-// that warning goes away). Pinyin and meanings the owner already has are kept.
+// Fills in pinyin, meaning and example sentences from a pasted list (e.g. the AI's reply to
+// the pinyin prompt or to the example sentences prompt). It only fills what is missing: an
+// empty pinyin or meaning, pinyin cut from a word (then that warning goes away), or a missing
+// example sentence. What the owner already has is kept.
 // The "> " lines under a pasted word fill in the parts of that word, place by place, so each
 // character gets the reading it has in that word.
-// Returns { entries, updated }: updated = how many entries got something new.
+// Returns { entries, updated, filled, examples, completed }: updated = how many entries got
+// something new; filled = how many entries got pinyin or a meaning; examples = how many words
+// got a new example sentence; completed = how many words got the missing pinyin or English of
+// the sentence they had.
 export function fillIn(entries, incoming) {
   const byWord = new Map();
   // (A pasted word fills only entries with the same word, so the prompt's example lines fill
@@ -182,24 +206,35 @@ export function fillIn(entries, incoming) {
   }
   const out = entries.map(entry => ({ ...entry }));
   const changed = new Set();
+  const filled = new Set();
+  const examples = new Set();
+  const completed = new Set();
+  const fill = (index, source) => {
+    const result = fillFrom(out[index], source);
+    if (result.word || result.example) changed.add(index);
+    if (result.word) filled.add(index);
+    if (result.example === 'new') examples.add(out[index].word);
+    if (result.example === 'more') completed.add(out[index].word);
+  };
   // First the parts, from the "> " lines of their own word: the most exact source.
   out.forEach((entry, index) => {
     const group = byWord.get(entry.word);
     if (!group || !group.parts.length) return;
     partIndexes(out, index).forEach((partIndex, k) => {
       const source = group.parts[k];
-      if (source && source.word === out[partIndex].word && fillFrom(out[partIndex], source)) changed.add(partIndex);
+      if (source && source.word === out[partIndex].word) fill(partIndex, source);
     });
   });
   // Then every entry from a pasted line with the same word.
   out.forEach((entry, index) => {
     const group = byWord.get(entry.word);
-    if (group && fillFrom(entry, group.head)) changed.add(index);
+    if (group) fill(index, group.head);
   });
-  return { entries: out, updated: changed.size };
+  return { entries: out, updated: changed.size, filled: filled.size, examples: examples.size, completed: completed.size };
 }
 
-// Fills `entry` from `source` where something is missing. True when something changed.
+// Fills `entry` from `source` where something is missing. Returns { word, example }: whether
+// its pinyin or meaning changed, and what its example sentence got ('new', 'more' or '').
 function fillFrom(entry, source) {
   let changed = false;
   if (source.pinyin && (!entry.pinyin || entry.splitFrom)) {
@@ -213,7 +248,46 @@ function fillFrom(entry, source) {
     changed = true;
   }
   if (changed && source.unsure) entry.unsure = true;
-  return changed;
+  return { word: changed, example: fillExample(entry, source) };
+}
+
+// The example sentence: a new one only when the entry has none (one the owner has is never
+// replaced); for the same sentence, its missing pinyin or English.
+// Returns 'new', 'more' (pinyin or English added) or '' (nothing changed).
+function fillExample(entry, source) {
+  if (!source.example) return '';
+  if (!entry.example) {
+    entry.example = source.example;
+    entry.examplePinyin = source.examplePinyin || '';
+    entry.exampleMeaning = source.exampleMeaning || '';
+    entry.exampleUnsure = Boolean(source.exampleUnsure);
+    return 'new';
+  }
+  if (entry.example !== source.example) return '';
+  let more = false;
+  if (source.examplePinyin && !entry.examplePinyin) {
+    entry.examplePinyin = source.examplePinyin;
+    more = true;
+  }
+  if (source.exampleMeaning && !entry.exampleMeaning) {
+    entry.exampleMeaning = source.exampleMeaning;
+    more = true;
+  }
+  if (more && source.exampleUnsure) entry.exampleUnsure = true;
+  return more ? 'more' : '';
+}
+
+// Example sentences longer than EXAMPLE_MAX_BOXES are not taken into the list: they would not
+// fit on their line under the grid. Returns { entries, dropped }: copies of the entries without
+// those sentences (the others are unchanged), and the words that lost one (each word once).
+export function dropLongExamples(entries) {
+  const dropped = [];
+  const out = entries.map(entry => {
+    if (!entry.example || [...entry.example].length <= EXAMPLE_MAX_BOXES) return entry;
+    if (!dropped.includes(entry.word)) dropped.push(entry.word);
+    return { ...entry, example: '', examplePinyin: '', exampleMeaning: '', exampleUnsure: false };
+  });
+  return { entries: out, dropped };
 }
 
 const needsHelp = entry => !entry.pinyin || !entry.meaning || Boolean(entry.splitFrom);
@@ -242,6 +316,32 @@ export function pinyinPrompt(promptText, entries) {
   });
   if (!lines.length) return '';
   return promptText.trimEnd() + '\n' + lines.join('\n') + '\n';
+}
+
+// The words to ask the AI for an example sentence: the words of the list (not sentences, not
+// the lines under a word) that are printed somewhere without one, each word once, in list
+// order. (A word is printed where it first appears, which may be a line under another word;
+// filling in gives the sentence to every entry with that word that has none.)
+// Returns the prompt with "{LEVEL}" replaced by "HSK <level>" and the words after it, or ''
+// when there is nothing to ask.
+export function examplePrompt(promptText, entries, level = 1) {
+  const repeats = repeatFlags(entries);
+  const missing = new Set(entries.filter((entry, i) => !repeats[i] && !entry.example).map(entry => entry.word));
+  const words = [];
+  for (const entry of entries) {
+    if (depthOf(entry) > 0 || isSentence(entry.word) || !missing.has(entry.word) || words.includes(entry.word)) continue;
+    words.push(entry.word);
+  }
+  if (!words.length) return '';
+  return promptText.replaceAll('{LEVEL}', `HSK ${level}`).trimEnd() + '\n' + words.join('\n') + '\n';
+}
+
+// True when a pasted reply only repeats the example sentences prompt's format example: there
+// is a list to fill in, and the reply has only the example's words (with their sentences).
+export function isExamplePromptExample(incoming, entries) {
+  const inList = new Set(entries.map(entry => entry.word));
+  return entries.length > 0 && incoming.length > 0 && incoming.every(entry =>
+    EXAMPLE_PROMPT_EXAMPLE.includes(entry.word) && entry.example && !inList.has(entry.word));
 }
 
 // True when a pasted reply only repeats the pinyin prompt's format example: there is a list

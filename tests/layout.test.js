@@ -1,7 +1,9 @@
 // Tests for js/layout.js (run: node --test tests/layout.test.js)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutSheet, emptyRows, labelText, MM, PAGE_HEIGHT, HEADER_TEXT } from '../js/layout.js';
+import {
+  layoutSheet, emptyRows, labelText, exampleText, exampleUnderline, MM, PAGE_HEIGHT, HEADER_TEXT,
+} from '../js/layout.js';
 
 const item = (word, rows, pinyin = '', meaning = '') => ({ word, pinyin, meaning, rows });
 const mmFromTop = y => (PAGE_HEIGHT - y) / MM;
@@ -130,4 +132,38 @@ test('a long sentence carries on to the next line: KaiTi row, print row, KaiTi r
 test('an empty list makes no pages', () => {
   assert.equal(layoutSheet([], 'small').pages.length, 0);
   assert.equal(layoutSheet([], 'large').pages.length, 0);
+});
+
+test('large boxes: the example sentence sits under its grid, above the cut line, and moves nothing', () => {
+  const items = [
+    { ...item('女朋友', 6, 'nǚ péngyou', 'girlfriend'), example: '我有一个女朋友。', examplePinyin: 'Wó yǒu yí ge nǚ péngyou.', exampleMeaning: 'I have a girlfriend.' },
+    { ...item('国', 6, 'guó', 'country'), example: '我是中国人。' },
+  ];
+  const plain = items.map(i => ({ ...i, example: '' }));
+  const layout = layoutSheet(items, 'large');
+  // The same blocks and cut line as without sentences: two 2 + 6 blocks still share a page.
+  assert.deepEqual(layout.blocks, layoutSheet(plain, 'large').blocks);
+  assert.deepEqual(layout.pages[0].marks, layoutSheet(plain, 'large').pages[0].marks);
+  const lines = layout.pages[0].texts.filter(t => t.size === 10);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].text, '我有一个女朋友。   Wó yǒu yí ge nǚ péngyou.   - I have a girlfriend.');
+  near(lines[0].x / MM, 15, 'example x');
+  near(lines[0].maxWidth / MM, 180, 'example width');
+  near(mmFromTop(lines[0].y), 142 + 4.5, 'baseline 4.5 mm under the first grid (22 + 8 x 15)');
+  near(mmFromTop(lines[1].y), 278.5 + 4.5, 'baseline under the second grid');
+  assert.ok(mmFromTop(lines[0].y) + 1.5 < 148.5, 'descenders stay above the cut line');
+  assert.deepEqual(lines[0].underline, { start: 4, end: 7 });
+  assert.deepEqual([lines[1].text, lines[1].underline], ['我是中国人。', { start: 3, end: 4 }]);
+  // A Page block: the sentence is at the bottom of the page.
+  const page = layoutSheet([{ ...items[0], rows: 'Page' }], 'large').pages[0].texts.filter(t => t.size === 10);
+  near(mmFromTop(page[0].y), 277 + 4.5, 'bottom of the page');
+  // Small boxes print no sentence.
+  assert.deepEqual(layoutSheet(items, 'small').pages.map(p => p.texts.length), layoutSheet(plain, 'small').pages.map(p => p.texts.length));
+});
+
+test('example line: unknown parts are left out; no underline when the word is not in the sentence', () => {
+  assert.equal(exampleText({ example: '我喜欢猫。' }), '我喜欢猫。');
+  assert.equal(exampleText({ example: '我喜欢猫。', exampleMeaning: 'I like cats.' }), '我喜欢猫。   - I like cats.');
+  assert.equal(exampleUnderline({ word: '狗', example: '我喜欢猫。' }), null);
+  assert.deepEqual(exampleUnderline({ word: '你好！', example: '你好，我是李小雨。' }), { start: 0, end: 2 });
 });

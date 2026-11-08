@@ -454,3 +454,88 @@ test('offline: after one visit the app opens, reads a file and makes PDFs; only 
   assert.deepEqual(foreign, [], 'nothing is fetched from any other site');
   await context.close();
 });
+
+test('example sentences: the prompt, filling in, the 12-box limit, Edit, the check screen, the PDF and Save list', async () => {
+  const { context, page, problems } = await openApp({ permissions: ['clipboard-read', 'clipboard-write'] });
+  let questions = 0;
+  page.on('dialog', dialog => { questions++; dialog.accept(); });
+  await page.waitForTimeout(300);
+  await pasteAndRead(page, '# Bài 7\n女朋友 | nǚ péngyou | girlfriend\n号 | hào | number\n明天 | míngtiān | tomorrow\n你好！ | Ní hǎo! | Hello!');
+
+  // The prompt asks, at the chosen level, for the words without a sentence (not for the sentence).
+  await page.selectOption('#example-level', '2');
+  await page.click('#copy-example-prompt');
+  await page.waitForSelector('#list-message.ok');
+  let copied = await page.evaluate(() => navigator.clipboard.readText());
+  assert.ok(copied.includes('HSK 2') && !copied.includes('{LEVEL}'), copied.slice(0, 120));
+  assert.ok(copied.endsWith('THE LIST:\n女朋友\n号\n明天\n'), copied.slice(-60));
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('chinese-handwriting-practice-1.settings')).exampleLevel), 2);
+
+  // The reply fills in, without a question; a sentence of more than 12 boxes is refused and named.
+  await pasteAndRead(page, '```\n女朋友\n= 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.\n' +
+    '号\n= 今天几号？我的生日是八月十号。 | Jīntiān jǐ hào? Wǒ de shēngrì shì bāyuè shí hào. | What is the date? My birthday is August 10.\n' +
+    '明天\n= 明天你去哪儿玩？ | Míngtiān nǐ qù nǎr wán? | Where will you go for fun tomorrow? ?\n```');
+  assert.equal(questions, 0);
+  const message = await page.textContent('#message');
+  assert.match(message, /Added an example sentence to 2 word\(s\)/);
+  assert.match(message, /1 example sentence\(s\) had more than 12 boxes and were not added \(号\)/);
+  // The check screen shows each sentence with its word underlined, and the AI's "?" as a warning.
+  assert.equal(await page.textContent('#list .word:nth-child(1) .example u'), '女朋友');
+  assert.match(await page.textContent('#list .word:nth-child(1) .example'), /Wó yǒu yí ge nǚ péngyou\. - I have a girlfriend\./);
+  assert.equal(await page.locator('#list .word:nth-child(2) .example').count(), 0);
+  const tomorrow = await flagsOf(page, 2);
+  assert.ok(tomorrow.some(f => f.startsWith('warn') && f.includes('not sure of the example')), tomorrow.join(' / '));
+  // 哪儿 said "nǎr" in the middle of the sentence: one syllable for two characters is fine.
+  assert.ok(!tomorrow.some(f => f.includes('syllable')), tomorrow.join(' / '));
+  // Asked again, the prompt lists only the word still without one.
+  await page.click('#copy-example-prompt');
+  copied = await page.evaluate(() => navigator.clipboard.readText());
+  assert.ok(copied.endsWith('THE LIST:\n号\n'), copied.slice(-40));
+
+  // Edit refuses more than 12 boxes (said inside the form) and takes a shorter sentence.
+  await page.click('#list .word:nth-child(2) button[data-action="edit"]');
+  await page.fill('.edit-form input[name="example"]', '今天几号？我的生日是八月十号。');
+  await page.click('.edit-form button[type="submit"]');
+  assert.match(await page.textContent('.edit-form .form-message'), /has 15 boxes; at most 12/);
+  await page.fill('.edit-form input[name="example"]', '今天是星期一.');
+  await page.click('.edit-form button[type="submit"]');
+  const flags = await flagsOf(page, 1);
+  assert.ok(flags.some(f => f.startsWith('warn') && f.includes('does not contain 号')), flags.join(' / '));
+  assert.ok(flags.some(f => f.includes('has no pinyin and no English')), flags.join(' / '));
+  await page.click('#list .word:nth-child(2) button[data-action="edit"]');
+  await page.fill('.edit-form input[name="example"]', '今天几号？');
+  await page.fill('.edit-form input[name="examplePinyin"]', 'Jīntiān jǐ hào?');
+  await page.fill('.edit-form input[name="exampleMeaning"]', 'What is the date today?');
+  await page.click('.edit-form button[type="submit"]');
+  assert.deepEqual(await flagsOf(page, 1), []);
+
+  // Tab 2 says where the sentences are printed; the large-box PDF has them.
+  await page.click('#tab-sheet');
+  assert.match(await page.textContent('#example-note'), /3 word\(s\) have an example sentence: it is printed only on the grid sheet with large boxes/);
+  const { file } = await makePdf(page, 'large', 'examples-large.pdf');
+  assert.equal(await page.textContent('#example-note'), '');
+  if (HAVE_PYMUPDF) {
+    const text = checkPdf(file).text.join('\n');
+    for (const piece of ['我有一个女朋友。', '今天几号？', 'Where will you go for fun tomorrow?']) assert.ok(text.includes(piece), piece);
+  }
+
+  // Save list keeps the sentences, each under its word.
+  await page.click('#tab-words');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#save-list')]);
+  const saved = fs.readFileSync(await download.path(), 'utf8');
+  assert.match(saved, /^女朋友 \| nǚ péngyou \| girlfriend\n= 我有一个女朋友。 \| Wó yǒu yí ge nǚ péngyou\. \| I have a girlfriend\.$/m);
+  assert.match(saved, /^号 \| hào \| number\n= 今天几号？ \| Jīntiān jǐ hào\? \| What is the date today\?$/m);
+
+  // Merge ↓ joins two words: neither sentence is about the joined word, so it has none.
+  await page.click('#list .word:nth-child(2) button[data-action="merge"]');
+  assert.deepEqual(await wordsOnScreen(page), ['女朋友', '号明天', '你好！']);
+  assert.equal(await page.locator('#list .word:nth-child(2) .example').count(), 0);
+
+  // A list of only sentences: there is no word to ask about.
+  await page.click('#clear-list');
+  await pasteAndRead(page, '你好！ | Ní hǎo! | Hello!');
+  await page.click('#copy-example-prompt');
+  assert.match(await page.textContent('#list-message'), /no word to ask about/);
+  assert.deepEqual(problems, []);
+  await context.close();
+});

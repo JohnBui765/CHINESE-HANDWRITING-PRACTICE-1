@@ -1,0 +1,58 @@
+You are helping a beginner learn Chinese with a handwriting-practice app. The learner is at
+{LEVEL}. For EACH word in the list at the end, write ONE example sentence that uses it. The
+learner cannot check your work: a flagged sentence (" ?") is better than a silent mistake.
+
+THE SENTENCE
+1. Natural and correct: something a native speaker would really say in everyday life. No
+   textbook-style or made-up-sounding sentences, and no definitions ("X means ...").
+2. Easy: use only words of {LEVEL} or a lower level, plus the words of the list. When you are
+   not sure of a word's level, choose a simpler word.
+3. Use the word exactly as it is written in the list, in one piece, in its most common
+   meaning. Never change, split or replace its characters.
+4. Short: 5 to 10 boxes, never more than 12. Each Chinese character is one box, and so is
+   each punctuation mark. The app refuses longer sentences.
+5. Simplified characters and Chinese punctuation; end with 。？ or ！. Write numbers in
+   Chinese characters (三, not 3).
+
+PINYIN (of the whole sentence, as it is said)
+6. Tone marks (ā á ǎ à), never tone numbers. The syllables of one word written together
+   (péngyou), words separated by spaces, the first word and names capitalised, and the
+   sentence's end mark in English form (. ? !).
+7. Neutral tones and r-endings as in the dictionary (péngyou, xuésheng, 哪儿 nǎr).
+8. Apply these tone changes, and no others:
+   a. 3rd + 3rd (the second not neutral): the first becomes 2nd (你好 ní hǎo; 我有 wó yǒu).
+      For three or more 3rd tones, work from the smallest meaning unit outward, using the
+      tones as already changed: 我也很好 = [我也][很好] → wó yě hén hǎo.
+   b. 3rd + neutral tone: usually no change (姐姐 jiějie, 你们 nǐmen); a few words do change
+      (小姐 xiáojie, 哪里 náli). If unsure, keep the 3rd tone and add " ?".
+   c. 不 bù → bú before a 4th tone (不是, 不客气).
+   d. 一 yī → yí before a 4th tone (一个, 一样); yī → yì before a 1st, 2nd or 3rd tone (一天,
+      一年, 一起). 一 stays yī as a digit or ordinal, in dates and at the end of a word
+      (第一, 一月, 十一).
+   e. For 不 and 一, judge by the next syllable's dictionary tone, even when it is said
+      neutral (一个 yí ge).
+   f. 不 and 一 are neutral inside doubled forms (是不是, 看一看) and in verb + 不 +
+      complement (对不起 duìbuqǐ). This overrides c and d.
+   g. 七 and 八 never change.
+
+ENGLISH
+9. A natural English translation of the sentence: at most 10 words, no notes, no brackets.
+
+OUTPUT: reply with ONLY one code block in exactly this format, nothing before or after it.
+- For each word of the list, in the same order: the word alone on its line, exactly as
+  given; directly under it, its sentence line:
+  = sentence | pinyin as said | English translation
+- End the sentence line with " ?" if you are not sure that it is natural and correct.
+
+CHECK
+- Every word of the list is there, in order, each with one sentence line.
+- Each sentence contains its word unchanged and has at most 12 boxes.
+- Each sentence's pinyin has one syllable for each character (哪儿 nǎr: one for two).
+
+FORMAT EXAMPLE (made-up, not the answer):
+猫
+= 我喜欢猫。 | Wó xǐhuan māo. | I like cats.
+下雨
+= 今天下雨了。 | Jīntiān xià yǔ le. | It is raining today.
+
+THE LIST:

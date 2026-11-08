@@ -92,7 +92,7 @@ main { max-width: 820px; margin: 0 auto; padding: 16px; }
 
 label { display: block; font-weight: 600; margin-bottom: 4px; }
 
-textarea, input[type="text"], input[type="number"] {
+textarea, input[type="text"], input[type="number"], select {
   width: 100%;
   font: inherit;
   color: inherit;
@@ -102,6 +102,7 @@ textarea, input[type="text"], input[type="number"] {
   padding: 10px;
 }
 input[type="number"] { width: 5.5em; }
+select { width: auto; min-height: 44px; padding: 6px 10px; }
 
 details { margin: 10px 0; }
 summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
@@ -148,6 +149,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .word .print { font-family: 'HG Print', sans-serif; font-size: 34px; line-height: 1.1; color: var(--muted); }
 .word .info { color: var(--muted); }
 .word .info b { color: var(--text); font-weight: 600; }
+.word .example { margin-top: 4px; }
+.word .example-zh { font-family: 'HG Print', sans-serif; font-size: 1.15rem; color: var(--text); }
+.word .example u { text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.edit-form .form-message:empty { display: none; }
 
 /* Parts ("> " lines): the characters of a word, the chunks of a sentence, indented under it. */
 .word.part { margin-left: 14px; padding-left: 12px; border-left: 3px solid var(--line); }

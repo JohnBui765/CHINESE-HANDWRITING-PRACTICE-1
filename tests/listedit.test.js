@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 import {
   splitEntries, canSplit, unsplit, deleteEntry, moveEntry, repeatFlags, printedEntries,
   allInList, fillIn, pinyinPrompt, isPinyinPromptExample, PINYIN_PROMPT_EXAMPLE,
+  examplePrompt, isExamplePromptExample, dropLongExamples, EXAMPLE_PROMPT_EXAMPLE, pinyinFits, sentencePinyinFits,
 } from '../js/listedit.js';
-import { readText } from '../js/extract.js';
+import { readText, countSyllables, chineseChars, EXAMPLE_MAX_BOXES } from '../js/extract.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const entry = (word, pinyin = '', meaning = '', more = {}) => ({
@@ -177,4 +178,112 @@ test('a reply without ">" marks still fills each character with its own word\'s 
     '一百 | yìbǎi | one hundred\n一 | yī → yì | one\n百 | bǎi | hundred').entries;
   const result = fillIn(list, reply);
   assert.deepEqual(show(result.entries), ['一个 yí ge', '>一 yī→yí', '>个 gè→ge', '一百 yìbǎi', '>一 yī→yì', '>百 bǎi']);
+});
+
+test('the example sentences prompt lists the words without one, once each, at the chosen level', () => {
+  const list = [
+    entry('女朋友', 'nǚ péngyou', 'girlfriend', { example: '我有一个女朋友。' }),
+    entry('女', 'nǚ', '', { depth: 1 }),        // a line under a word: not asked
+    entry('哪', 'nǎ'),
+    entry('你好！', 'Ní hǎo!'),                 // a sentence: not asked
+    entry('国'),
+    entry('哪', 'nǎ'),                          // asked once
+    entry('女朋友'),                            // another 女朋友 has one already
+  ];
+  const prompt = 'Level {LEVEL}; words of {LEVEL}.\nTHE LIST:\n';
+  assert.equal(examplePrompt(prompt, list, 2), 'Level HSK 2; words of HSK 2.\nTHE LIST:\n哪\n国\n');
+  assert.equal(examplePrompt(prompt, list.filter(e => !['哪', '国'].includes(e.word))), '');
+  // A word is asked for when it is printed without one: here the first 友 (printed) has none,
+  // although the grey 友 under 朋友 has one.
+  const printed = [entry('友'), entry('朋友', '', '', { example: '他是我的朋友。' }), entry('友', '', '', { depth: 1, example: '他是我的朋友。' })];
+  assert.equal(examplePrompt(prompt, printed), 'Level HSK 1; words of HSK 1.\nTHE LIST:\n友\n');
+  const real = fs.readFileSync(path.join(ROOT, 'prompts', 'examples.txt'), 'utf8');
+  const copied = examplePrompt(real, list, 1);
+  assert.ok(!copied.includes('{LEVEL}') && copied.includes('HSK 1') && copied.endsWith('THE LIST:\n哪\n国\n'));
+});
+
+test('filling in example sentences: only where one is missing, never replacing one', () => {
+  const list = [
+    entry('猫', 'māo', 'cat'),
+    entry('狗', 'gǒu', 'dog', { example: '我有一只狗。', examplePinyin: '', exampleMeaning: '' }),
+    entry('鱼'),
+    entry('猫', '', '', { depth: 1 }),
+  ];
+  const reply = readText([
+    '猫', '= 我喜欢猫。 | Wó xǐhuan māo. | I like cats. ?',
+    '狗', '= 狗很好。 | Gǒu hén hǎo. | Dogs are nice.',
+    '鱼 | yú | fish', '= 我不吃鱼。 | Wǒ bù chī yú. | I do not eat fish.',
+  ].join('\n')).entries;
+  assert.ok(allInList(list, reply));
+  const result = fillIn(list, reply);
+  const [cat, dog, fish, part] = result.entries;
+  assert.deepEqual([cat.example, cat.examplePinyin, cat.exampleUnsure, cat.unsure], ['我喜欢猫。', 'Wó xǐhuan māo.', true, false]);
+  assert.deepEqual([dog.example, dog.examplePinyin], ['我有一只狗。', '']);   // the owner's sentence stays
+  assert.deepEqual([fish.pinyin, fish.meaning, fish.example], ['yú', 'fish', '我不吃鱼。']);
+  assert.equal(part.example, '我喜欢猫。');                                   // every 猫 gets it
+  // 3 entries changed: 鱼 got pinyin and meaning; 2 words (猫 twice, 鱼) got a new sentence.
+  assert.deepEqual([result.updated, result.filled, result.examples, result.completed], [3, 1, 2, 0]);
+  assert.equal(list[0].example, undefined);                                   // the list itself is unchanged
+  // The same sentence without its pinyin and English gets them.
+  const same = fillIn([entry('狗', 'gǒu', 'dog', { example: '狗很好。' })], readText('狗\n= 狗很好。 | Gǒu hén hǎo. | Dogs are nice.').entries);
+  assert.deepEqual([same.updated, same.filled, same.examples, same.completed, same.entries[0].examplePinyin, same.entries[0].exampleMeaning],
+    [1, 0, 0, 1, 'Gǒu hén hǎo.', 'Dogs are nice.']);
+});
+
+test('example sentences longer than 12 boxes are not taken in', () => {
+  const twelve = '我们下午三点在学校见面。';
+  const thirteen = '我昨天晚上去朋友家吃饭了。';
+  assert.deepEqual([[...twelve].length, [...thirteen].length], [EXAMPLE_MAX_BOXES, EXAMPLE_MAX_BOXES + 1]);
+  const list = [
+    entry('见面', '', '', { example: twelve }),
+    entry('吃饭', '', '', { example: thirteen, examplePinyin: 'x', exampleMeaning: 'y', exampleUnsure: true }),
+    entry('吃饭', '', '', { depth: 1, example: thirteen }),
+  ];
+  const { entries, dropped } = dropLongExamples(list);
+  assert.deepEqual(dropped, ['吃饭']);
+  assert.equal(entries[0], list[0]);
+  assert.deepEqual([entries[1].example, entries[1].examplePinyin, entries[1].exampleMeaning, entries[1].exampleUnsure], ['', '', '', false]);
+  assert.equal(entries[2].example, '');
+  assert.equal(list[1].example, thirteen);
+});
+
+test('a reply that only repeats the example sentences prompt\'s format example is noticed', () => {
+  const echo = readText('猫\n= 我喜欢猫。 | Wó xǐhuan māo. | I like cats.\n下雨\n= 今天下雨了。 | Jīntiān xià yǔ le. | It is raining today.').entries;
+  assert.equal(isExamplePromptExample(echo, [entry('女朋友')]), true);
+  assert.equal(allInList([entry('女朋友')], echo), false);
+  assert.equal(isExamplePromptExample(echo, [entry('猫')]), false);   // a list with 猫: a real reply
+});
+
+test('prompts/examples.txt: its format example is EXAMPLE_PROMPT_EXAMPLE, keeps its own rules, and is not in the samples', () => {
+  const prompt = fs.readFileSync(path.join(ROOT, 'prompts', 'examples.txt'), 'utf8');
+  assert.ok(prompt.includes('{LEVEL}') && prompt.trimEnd().endsWith('THE LIST:'));
+  assert.equal(readText(prompt).echoedExample, true);
+  const block = prompt.slice(prompt.indexOf('FORMAT EXAMPLE'), prompt.indexOf('THE LIST:')).split('\n').slice(1).join('\n');
+  const entries = readText(block).entries;
+  assert.deepEqual(entries.map(e => e.word), EXAMPLE_PROMPT_EXAMPLE);
+  for (const e of entries) {
+    assert.ok([...e.example].length <= EXAMPLE_MAX_BOXES && e.example.includes(e.word), e.example);
+    assert.equal(countSyllables(e.examplePinyin), [...chineseChars(e.example)].length, e.examplePinyin);
+    assert.ok(e.exampleMeaning);
+  }
+  const key = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'sample_key.txt'), 'utf8');
+  for (const ch of EXAMPLE_PROMPT_EXAMPLE.join('')) {
+    assert.equal(key.includes(ch), false, ch);
+    for (const word of ['女朋友', '哪', '国', '她', '喂', '姐姐', '工作', '还', '忙', '吗']) assert.equal(word.includes(ch), false, ch);
+  }
+});
+
+test('pinyin check of a sentence: an r-ending (儿) may share a syllable anywhere, a missing syllable is still caught', () => {
+  const fits = (pinyin, text) => sentencePinyinFits(pinyin, chineseChars(text));
+  assert.ok(fits('Zhèr shì wǒ jiā.', '这儿是我家。'));
+  assert.ok(fits('Wǒ huì shuō yìdiǎnr Hànyǔ.', '我会说一点儿汉语。'));
+  assert.ok(fits('Nǎr yǒu shāngdiàn?', '哪儿有商店？'));
+  assert.ok(fits('Nǐ jiā zài nǎr?', '你家在哪儿？'));
+  assert.ok(fits('Wó yǒu yí ge nǚ péngyou.', '我有一个女朋友。'));
+  assert.ok(!fits('Zhèr shì jiā.', '这儿是我家。'), 'a missing syllable');
+  assert.ok(!fits('Wǒ yǒu yí ge péngyou.', '我有一个女朋友。'), 'a missing syllable, no 儿');
+  assert.ok(!fits('Wǒ shì wǒ de jiā.', '我是家。'), 'too many syllables');
+  // The word check alone does not allow 儿 in the middle; it still wants all other syllables.
+  assert.ok(!pinyinFits('Zhèr shì wǒ jiā.', '这儿是我家'));
+  assert.ok(pinyinFits('péngyou', '朋友') && !pinyinFits('péng', '朋友'));
 });

@@ -726,3 +726,88 @@ describe('review of the parts change', () => {
     assert.deepEqual(words(readText('国 | guó\n国 | guó\n中国 | Zhōngguó\n中国 | Zhōngguó')), ['国', '中国']);
   });
 });
+
+describe('example sentences ("= " lines)', () => {
+  const ex = e => e.example === undefined ? '-'
+    : `${e.example}|${e.examplePinyin}|${e.exampleMeaning}${e.exampleUnsure ? ' ?' : ''}`;
+  const LESSON = [
+    '# Bài 5',
+    '女朋友 | nǚ péngyou | girlfriend',
+    '= 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.',
+    '> 女 | nǚ | woman',
+    '= 她是女老师。 | Tā shì nǚ lǎoshī. | She is a female teacher.',
+    '朋 | péng | friend',
+    '哪',
+  ].join('\n');
+
+  test('an "= " line is the example sentence of the line right above it, a word or a part', () => {
+    const result = readText(LESSON);
+    // 朋 lost its ">", but the "= " lines in between do not stop it from being found as a part.
+    assert.deepEqual(result.entries.map(e => `${'>'.repeat(e.depth)}${e.word}`), ['女朋友', '>女', '>朋', '哪']);
+    assert.deepEqual(result.entries.map(ex), [
+      '我有一个女朋友。|Wó yǒu yí ge nǚ péngyou.|I have a girlfriend.',
+      '她是女老师。|Tā shì nǚ lǎoshī.|She is a female teacher.',
+      '-', '-',
+    ]);
+    assert.equal(result.lines, 2);   // "= " lines are not word lines
+  });
+
+  test('in a fenced AI reply: " ?" flag, a question, one sentence per word, a total without them', () => {
+    const result = readText([
+      'Here is the answer:', '```', '# Bài 9',
+      '1 | 你 | nǐ | you',
+      '= 你去哪儿？ | Nǐ qù nǎr? | Where are you going?',
+      '2 | 好 | hǎo | good',
+      '= 我很好。 | Wǒ hén hǎo. | I am very well. ?',
+      '= 好吃。 | Hǎochī. | Tasty.',
+      '# total: 2', '```',
+    ].join('\n'));
+    assert.equal(result.isReply, true);
+    assert.deepEqual(result.entries.map(ex), [
+      '你去哪儿？|Nǐ qù nǎr?|Where are you going?',
+      '我很好。|Wǒ hén hǎo.|I am very well. ?',
+    ]);
+    assert.deepEqual([result.total, result.lines], [2, 2]);
+  });
+
+  test('a question alone keeps its question mark; "=" lines without Chinese or without a word are ignored', () => {
+    const result = readText('= 我喜欢猫。 | Wó xǐhuan māo. | I like cats.\n你 | nǐ | you\n= | no Chinese here |\n= 你去哪儿？\n====');
+    assert.deepEqual(words(result), ['你']);
+    assert.equal(ex(result.entries[0]), '你去哪儿？||');
+  });
+
+  test('a code block of bare words and "= " lines is read alone; a repeat gives its sentence to the first', () => {
+    const fenced = readText('Sure! 你好\n```\n女朋友\n= 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.\n```\nHope it helps. 再见');
+    assert.deepEqual(words(fenced), ['女朋友']);
+    assert.equal(fenced.entries[0].example, '我有一个女朋友。');
+    const repeated = readText('猫 | māo | cat\n狗 | gǒu | dog\n猫\n= 我喜欢猫。 | Wó xǐhuan māo. | I like cats.');
+    assert.deepEqual(words(repeated), ['猫', '狗']);
+    assert.equal(repeated.removed, 1);
+    assert.equal(repeated.entries[0].example, '我喜欢猫。');
+  });
+
+  test('saved lists keep example sentences (toLessonText, then read back)', () => {
+    const entries = readText(LESSON).entries;
+    const text = toLessonText('Bài 5', entries);
+    assert.ok(text.startsWith('# Bài 5\n女朋友 | nǚ péngyou | girlfriend\n' +
+      '= 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.\n> 女 | nǚ | woman\n= 她是女老师。'), text);
+    assert.deepEqual(readText(text).entries.map(ex), entries.map(ex));
+    // Without pinyin, the English keeps its column.
+    const only = toLessonText('x', [{ word: '猫', depth: 0, pinyin: '', said: '', meaning: '', example: '我喜欢猫。', examplePinyin: '', exampleMeaning: 'I like cats.' }]);
+    assert.equal(only, '# x\n猫\n= 我喜欢猫。 |  | I like cats.\n');
+    assert.equal(ex(readText(only).entries[0]), '我喜欢猫。||I like cats.');
+    // With no other column anywhere, the "|" keeps the list in the lesson format when read back.
+    const bare = toLessonText('x', [{ word: '猫', depth: 0, pinyin: '', said: '', meaning: '', example: '我喜欢猫。', examplePinyin: '', exampleMeaning: '' }]);
+    assert.equal(bare, '# x\n猫\n= 我喜欢猫。 |\n');
+    assert.deepEqual(readText(bare).entries.map(e => [e.word, ex(e)]), [['猫', '我喜欢猫。||']]);
+  });
+
+  test('in ordinary text (no "|" columns, no "> " lines, no code block) a line starting with "=" is just text', () => {
+    const prose = readText('国\n= 第一课 =\n哪');
+    assert.deepEqual(words(prose), ['国', '第一课', '哪']);
+    assert.equal(prose.entries[0].example, undefined);
+    // An AI's code block is the lesson format even when its "= " lines have no columns.
+    const fenced = readText('```\n猫\n= 我喜欢猫。\n```');
+    assert.deepEqual(fenced.entries.map(e => [e.word, ex(e)]), [['猫', '我喜欢猫。||']]);
+  });
+});

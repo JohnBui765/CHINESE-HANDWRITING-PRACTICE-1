@@ -22,6 +22,9 @@
 //          character of a word, or a chunk of a sentence); 2 = a part of a part (">> ").
 //   said:  the pinyin as said inside the entry above, when its tone changes there
 //          ("> 你 | nǐ → ní": pinyin "nǐ", said "ní"); otherwise "".
+// An entry may also have an example sentence, from an "= " line under it:
+//   example, examplePinyin, exampleMeaning: the sentence (box text), its pinyin as said and its
+//   English; exampleUnsure: the AI ended that line with " ?". All missing when there is none.
 
 // The format examples of prompts/worksheet.txt (words) and prompts/sentences.txt.
 // If the owner changes an example in a prompt, change it here too
@@ -65,6 +68,12 @@ const NOTHING_LINE = /^#+\s*nothing to copy\b\s*:?\s*(.*)$/i;
 const PART_LINE = /^((?:>\s*)+)(.*)$/;
 // "nǐ → ní" (also -> and =>): the dictionary pinyin, then the pinyin as said.
 const ARROW = /\s*(?:→|->|=>|⟶|⇒)\s*/;
+// "= 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.": the example sentence
+// of the line above it. Not "=>" (an arrow) and not "===" (a Markdown underline).
+const EXAMPLE_LINE = /^=(?![=>])\s*(.*)$/;
+// An example sentence has at most this many boxes (characters and punctuation marks): it must
+// fit on its one line under the word's grid, and in one row of large boxes when copied by hand.
+export const EXAMPLE_MAX_BOXES = 12;
 
 // A line that opens or closes a Markdown code block: ``` or ~~~ (maybe with a language name).
 const FENCE_LINE = /^(```|~~~)[\w-]*\s*$/;
@@ -78,7 +87,12 @@ export function readText(text, fallbackName) {
   if (isReply(text)) {
     return readReply(text, fallbackName);
   }
-  const lines = codeBlock(splitLines(normalize(text)), isLessonLine);
+  const all = splitLines(normalize(text));
+  const lines = codeBlock(all, line => isLessonLine(line) || isExampleLine(line));
+  // "= " lines are example sentences in the lesson format: a text with "|" columns or "> "
+  // lines, or an AI's code block. In other text (a worksheet .docx or PDF, pasted prose) a line
+  // that starts with "=" is ordinary text, read as before.
+  const withExamples = lines !== all || lines.some(isLessonLine);
   const state = newState();
 
   for (const raw of lines) {
@@ -88,6 +102,7 @@ export function readText(text, fallbackName) {
       continue;
     }
     if (readPartLine(line, state)) continue;
+    if (withExamples && readExampleLine(line, state)) continue;
     if (line.includes('|')) {
       // Lesson format: "word | pinyin | meaning". A line that spells the next part of the word
       // above is one of its "> " lines whose ">" got lost (see readReply).
@@ -130,6 +145,7 @@ export function readReply(text, fallbackName) {
       continue;
     }
     if (readPartLine(line, state)) continue;
+    if (readExampleLine(line, state)) continue;
     // Only lines with "|" are word lines. Other lines (the AI's own remarks) are ignored.
     if (!line.includes('|')) continue;
     const { text: columns, unsure } = takeQuestionMark(stripLineDecoration(line));
@@ -272,6 +288,14 @@ export function toLessonText(name, entries) {
     if (pinyin || meaning || isSentence(entry.word)) columns.push(pinyin);
     if (meaning) columns.push(meaning);
     out.push(start + columns.join(' | ').trimEnd());
+    // Its example sentence goes right under it: "= sentence | pinyin | English". It always
+    // keeps a "|", so a list without other columns is still read in the lesson format.
+    if (entry.example) {
+      const example = [entry.example, cleanColumn(entry.examplePinyin)];
+      const exampleMeaning = cleanColumn(entry.exampleMeaning);
+      if (exampleMeaning) example.push(exampleMeaning);
+      out.push('= ' + example.join(' | ').trimEnd());
+    }
   }
   return out.join('\n') + '\n';
 }
@@ -358,6 +382,32 @@ function readPartLine(line, state) {
   return true;
 }
 
+// An "= " line: the example sentence of the entry above it (a word, a sentence or a part).
+// Returns false when the line is not one. One sentence per entry: a second one is ignored, and
+// so is an "= " line with no Chinese or with no entry above it. It changes nothing else, so a
+// "> " line whose ">" got lost is still found after it.
+function readExampleLine(line, state) {
+  const match = line.match(EXAMPLE_LINE);
+  if (!match) return false;
+  let text = stripLineDecoration(match[1]);
+  // " ?" after a space or "|" is the AI's "not sure" mark. A "?" right after Chinese is the
+  // sentence's own question mark (你去哪儿？ becomes 你去哪儿? with NFKC).
+  const unsure = /(\s|\|)\?+\s*$/.test(text);
+  if (unsure) text = text.replace(/\?+\s*$/, '').trim();
+  // The sentence is the first column with Chinese; then the pinyin, then the English.
+  const columns = text.split('|').map(c => c.trim());
+  const at = columns.findIndex(c => CHINESE_CHAR.test(c));
+  const target = state.found[state.found.length - 1];
+  if (at === -1 || !target || target.example) return true;
+  const sentence = boxText(columns[at]);
+  if (!sentence) return true;
+  target.example = sentence;
+  target.examplePinyin = cleanPinyin(columns[at + 1]);
+  target.exampleMeaning = cleanMeaning(columns.slice(at + 2));
+  target.exampleUnsure = unsure;
+  return true;
+}
+
 // True when `word` is what comes next in the spelling of the last word or sentence.
 function spellsNextPart(state, word) {
   const chars = chineseChars(word);
@@ -367,6 +417,11 @@ function spellsNextPart(state, word) {
 // A line of the lesson format: "word | ..." or a "> " line.
 function isLessonLine(line) {
   return (line.includes('|') && CHINESE_CHAR.test(line)) || PART_LINE.test(line.trim());
+}
+
+// An "= " line with Chinese: an example sentence (in the lesson format).
+function isExampleLine(line) {
+  return EXAMPLE_LINE.test(line.trim()) && CHINESE_CHAR.test(line);
 }
 
 // Takes away a Markdown table's outer pipes and a list bullet, so "| 1 | 女 |" becomes "1 | 女".
@@ -508,6 +563,12 @@ function makeResult(state, fallbackName, readAsReply) {
     if (!head.meaning) head.meaning = entry.meaning;
     if (head.page === null) head.page = entry.page;
     if (entry.unsure) head.unsure = true;
+    if (!head.example && entry.example) {
+      head.example = entry.example;
+      head.examplePinyin = entry.examplePinyin;
+      head.exampleMeaning = entry.exampleMeaning;
+      head.exampleUnsure = entry.exampleUnsure;
+    }
     if (!first.parts.length) first.parts = group.parts;
   }
   return {

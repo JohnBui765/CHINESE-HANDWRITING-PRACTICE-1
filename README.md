@@ -41,6 +41,7 @@ Choose one way to bring in words:
   ```
   # Bài 5
   女朋友 | nǚ péngyou | girlfriend
+  = 我有一个女朋友。 | Wó yǒu yí ge nǚ péngyou. | I have a girlfriend.
   > 女 | nǚ | woman
   > 朋 | péng | friend
   > 友 | yǒu → you | friend
@@ -48,7 +49,8 @@ Choose one way to bring in words:
   你好！ | Ní hǎo! | Hello!
   国
   ```
-  `yǒu → you` means: 友 is *yǒu* on its own, but said *you* in this word.
+  `yǒu → you` means: 友 is *yǒu* on its own, but said *you* in this word. A line starting with
+  `=` is the example sentence of the word above it (see **Example sentences** below).
 - **Open file…**: a `.txt`, a Word `.docx`, or a PDF that contains real text.
 - **A worksheet that is only a picture** (a scanned PDF or a photo): the app cannot read
   pictures. Instead:
@@ -85,6 +87,20 @@ Choose one way to bring in words:
   at the top and press **Read text**: it fills in your list instead of replacing it. It only
   fills what is missing (and the syllables taken from a word); pinyin and meanings you typed
   yourself are kept.
+- **Example sentences** help you remember a word in context. Choose your level next to
+  **Copy AI prompt: example sentences** (HSK 1–6), press the button, paste the prompt into an
+  AI chat, then paste the AI's reply into the box at the top and press **Read text**. Every
+  word without a sentence gets one short sentence with its pinyin and English, shown under the
+  word with the word **underlined** (check that the underline is under the same characters as
+  the word). The button asks only for words that have no sentence yet, and filling in never
+  replaces a sentence you already have. **Edit** lets you type, change or empty a sentence.
+  - A sentence has **at most 12 boxes** (each character and each punctuation mark is one box):
+    longer ones are not added, and the message names the word. Press the button again to get a
+    new one. (12 boxes fit on one line under the grid, and in one row of boxes if you want to
+    copy the sentence by hand.)
+  - Orange: the AI was not sure, the sentence does not contain the word, the pinyin or the
+    English is missing or does not fit, an unusual character, or a long English translation.
+  - The sentences are printed on the **large-box** sheet only, under each word's boxes.
 - **Grey rows** are repeats: every word or character is printed only the first time it appears
   (十 in 二十, 三十, 四十… is printed once). The grey rows stay so you can still read their
   pinyin (一 is *yí* in 一个 but *yì* in 一百). **Print again** prints one anyway.
@@ -95,7 +111,8 @@ Choose one way to bring in words:
 
 1. Choose the box size:
    - **Small boxes**: 10 mm, 18 per row, 26 rows per page, no pinyin.
-   - **Large boxes**: 15 mm, 12 per row, a line above each word with its pinyin and meaning.
+   - **Large boxes**: 15 mm, 12 per row, a line above each word with its pinyin and meaning, and
+     its example sentence (if it has one) on one line under its boxes, the word underlined.
    - A sentence longer than a row carries on in the next row; each punctuation mark gets its
      own box, as on Chinese composition paper.
 2. Press **Make PDF**, wait for "Done", then press **Save PDF**.
@@ -126,6 +143,10 @@ pinyin and translation under them.
 
 When a new version is published, it is used the **next time you open the app after closing all
 its windows** (on iPhone: swipe the app away, then open it again).
+
+A list saved with example sentences needs the version that has them: an older version reads the
+sentences as extra words. Update the app on every device (close and reopen it) before opening
+such a list there.
 
 ---
 

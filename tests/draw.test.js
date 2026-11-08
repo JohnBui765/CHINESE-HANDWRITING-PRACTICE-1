@@ -134,3 +134,37 @@ test('a sentence and an arrow end up in the PDF text, in both sheets', { skip: !
     for (const piece of ['！', '。', '，', 'nǐ → ní']) assert.ok(text.includes(piece), `${name}: ${piece}`);
   }
 });
+
+// The underline is checked against the characters' own boxes, as PyMuPDF reads them.
+const UNDERLINE_CHECK = `
+import sys, json, pymupdf
+page = pymupdf.open(sys.argv[1])[0]
+chars = []
+for block in page.get_text('rawdict')['blocks']:
+    for line in block.get('lines', []):
+        for span in line['spans']:
+            if ''.join(c['c'] for c in span['chars']).startswith(sys.argv[2]):
+                chars = [[c['c'], c['bbox'][0], c['bbox'][2], c['origin'][1]] for c in span['chars']]
+lines = [[i[1].x, i[2].x, i[1].y] for d in page.get_drawings() for i in d['items']
+         if i[0] == 'l' and abs(i[1].y - i[2].y) < 0.01]
+print(json.dumps({'chars': chars, 'lines': lines}))
+`;
+
+test('an example sentence is printed under the grid, with its word underlined', { skip: !HAVE_PYMUPDF && 'PyMuPDF not available' }, async () => {
+  const items = [{
+    word: '女朋友', pinyin: 'nǚ péngyou', meaning: 'girlfriend', rows: 'Page',
+    example: '我有一个女朋友。', examplePinyin: 'Wó yǒu yí ge nǚ péngyou.', exampleMeaning: 'I have a girlfriend.',
+  }];
+  const file = path.join(OUT, 'example-large.pdf');
+  fs.writeFileSync(file, await drawSheet(layoutSheet(items, 'large'), fonts, 'Examples'));
+  const text = check(file, '--json').text.join('\n');
+  for (const piece of ['我有一个女朋友。', 'Wó yǒu yí ge nǚ péngyou.', '- I have a girlfriend.']) assert.ok(text.includes(piece), piece);
+  const found = JSON.parse(execFileSync(PYTHON, ['-c', UNDERLINE_CHECK, file, '我有一个'], { encoding: 'utf-8' }));
+  const [nv, , you] = found.chars.slice(4, 7);
+  assert.deepEqual([nv[0], you[0]], ['女', '友']);
+  const baseline = nv[3];
+  const underline = found.lines.find(l => Math.abs(l[2] - (baseline + 1.7)) < 0.3);
+  assert.ok(underline, `an underline 1.7 pt under the baseline (${baseline})`);
+  assert.ok(Math.abs(underline[0] - nv[1]) < 0.3 && Math.abs(underline[1] - you[2]) < 0.3,
+    `the underline runs from 女 to 友: ${underline.slice(0, 2)} vs ${nv[1]}..${you[2]}`);
+});

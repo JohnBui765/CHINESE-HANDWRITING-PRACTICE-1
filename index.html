@@ -66,6 +66,18 @@
           <button type="button" id="split-all">Split all into characters</button>
           <button type="button" id="copy-pinyin-prompt">Copy AI prompt: pinyin &amp; meaning</button>
         </div>
+        <div class="buttons setting">
+          <button type="button" id="copy-example-prompt">Copy AI prompt: example sentences</button>
+          <label for="example-level">at level</label>
+          <select id="example-level">
+            <option value="1">HSK 1</option>
+            <option value="2">HSK 2</option>
+            <option value="3">HSK 3</option>
+            <option value="4">HSK 4</option>
+            <option value="5">HSK 5</option>
+            <option value="6">HSK 6</option>
+          </select>
+        </div>
         <p id="list-message" class="message" role="status" aria-live="polite"></p>
         <div class="buttons">
           <button type="button" id="save-list">Save list</button>
@@ -80,6 +92,7 @@
       <div class="card">
         <h2>Make sheet</h2>
         <p id="sheet-summary"></p>
+        <p id="example-note" class="hint"></p>
         <fieldset>
           <legend>Sheet type</legend>
           <label class="choice"><input type="radio" name="sheet-type" value="grid">
@@ -94,7 +107,7 @@
             <label class="choice"><input type="radio" name="box-size" value="small">
               <span><b>Small boxes</b> — 10 mm, 18 columns, no pinyin</span></label>
             <label class="choice"><input type="radio" name="box-size" value="large">
-              <span><b>Large boxes</b> — 15 mm, 12 columns, with pinyin and meaning</span></label>
+              <span><b>Large boxes</b> — 15 mm, 12 columns, with pinyin, meaning and example sentence</span></label>
           </fieldset>
           <div class="setting">
             <label for="default-rows">Empty rows for new words</label>

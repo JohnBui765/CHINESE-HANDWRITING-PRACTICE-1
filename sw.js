@@ -10,7 +10,7 @@
 
 const PREFIX = 'chinese-handwriting-practice-1-';
 // PRECACHE-START (written by tools/make_precache.py; do not edit by hand)
-const VERSION = '6e8dac0ed0';
+const VERSION = '145b936b83';
 const PRECACHE = [
   "./",
   "index.html",
@@ -34,6 +34,7 @@ const PRECACHE = [
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",
+  "prompts/examples.txt",
   "prompts/pinyin-meaning.txt",
   "prompts/sentences.txt",
   "prompts/worksheet.txt",

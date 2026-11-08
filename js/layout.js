@@ -3,7 +3,7 @@
 // Everything here is in PDF points, measured from the BOTTOM-left corner of the page
 // (the same as reportlab and pdf-lib).
 
-import { isSentence, PUNCTUATION } from './extract.js';
+import { isSentence, chineseChars, PUNCTUATION } from './extract.js';
 
 // The font of a character in the KaiTi row. Punctuation comes from the print font: its marks
 // sit where mainland China writes them (。and ， in the bottom-left corner of the box); the
@@ -50,6 +50,11 @@ const GRID_TO_CUT = 6.5;            // previous grid bottom -> cut line
 const CUT_TO_LABEL = 7;             // cut line -> next label baseline
 const LARGE_LOWEST_BOTTOM = 278.5;  // a grid may end at most this far down
 const LABEL_SIZE = 12;              // points
+// The example sentence sits in the 6.5 mm between a grid and the cut line under it, so no
+// other measurement changes. At 10 pt its tallest letters (Ǎ) and its descenders (g, y) keep
+// about 1 mm from the grid above and from the cut line below.
+const GRID_TO_EXAMPLE = 4.5;        // grid bottom -> example baseline (mm)
+const EXAMPLE_SIZE = 10;            // points; draw.js shrinks a longer line to the grid width
 
 // Turn "mm from the page top" into points from the page bottom.
 function fromTop(mm) {
@@ -84,6 +89,23 @@ export function labelText(item) {
   if (item.pinyin) parts.push(item.pinyin);
   if (item.meaning) parts.push('- ' + item.meaning);
   return parts.join('   ');
+}
+
+// The example sentence line under a large-box grid, like the label:
+// "sentence   pinyin   - English", leaving out unknown parts.
+export function exampleText(item) {
+  const parts = [item.example];
+  if (item.examplePinyin) parts.push(item.examplePinyin);
+  if (item.exampleMeaning) parts.push('- ' + item.exampleMeaning);
+  return parts.join('   ');
+}
+
+// Where the word is in its example sentence, for the underline: { start, end } (positions in
+// the sentence, and so in exampleText), or null when the sentence does not contain the word.
+export function exampleUnderline(item) {
+  const word = chineseChars(item.word);
+  const start = word ? String(item.example ?? '').indexOf(word) : -1;
+  return start < 0 ? null : { start, end: start + word.length };
 }
 
 // The rows of one block: model lines (KaiTi + print each) and the empty rows.
@@ -237,13 +259,22 @@ function layoutLarge(items) {
     addModelRows(out, item.word, x0, top, box, size.columns);
     blocks.push({ page: pages.length - 1, gridTopMm, rows });
     lastBottom = gridTopMm + rows * boxMm;
+    if (item.example) {
+      out.texts.push({
+        text: exampleText(item), font: 'print', size: EXAMPLE_SIZE, color: '#000000', align: 'left',
+        x: x0, y: fromTop(lastBottom + GRID_TO_EXAMPLE), maxWidth: size.columns * box,
+        underline: exampleUnderline(item),
+      });
+    }
   }
   return { boxSize: 'large', style: size, pages, blocks };
 }
 
-// items = [{ word, pinyin, meaning, rows }], boxSize = "small" | "large".
+// items = [{ word, pinyin, meaning, rows, example?, examplePinyin?, exampleMeaning? }],
+// boxSize = "small" | "large" (only large boxes print the example sentence, under the grid).
 // Returns { boxSize, style, pages, blocks }. Each page lists, in drawing order:
-// crosses (dashed), chars (cell centres), grid (solid), marks (block/cut lines), texts.
+// crosses (dashed), chars (cell centres), grid (solid), marks (block/cut lines), texts
+// (a text may have `underline`: { start, end } of the characters to underline).
 export function layoutSheet(items, boxSize = 'small') {
   if (!SIZES[boxSize]) throw new Error(`Unknown box size: ${boxSize}`);
   for (const item of items) {
